@@ -1,0 +1,14 @@
+CREATE TYPE account_item_status AS ENUM ('CONFIRMED', 'VOID');
+CREATE TYPE payment_status AS ENUM ('REGISTERED', 'VOID');
+CREATE TYPE expense_status AS ENUM ('CONFIRMED', 'VOID');
+CREATE TYPE employee_payment_status AS ENUM ('CONFIRMED', 'VOID');
+CREATE TYPE inventory_adjustment_direction AS ENUM ('INCREASE', 'DECREASE');
+CREATE TYPE kitchen_order_type AS ENUM ('ORDER', 'CANCELLATION');
+CREATE TYPE printer_connection_type AS ENUM ('NETWORK', 'LOCAL_AGENT', 'SYSTEM');
+CREATE TYPE sync_outbox_status AS ENUM ('PENDING', 'DELIVERED', 'FAILED', 'CONFLICT');
+
+ALTER TYPE cash_movement_type ADD VALUE IF NOT EXISTS 'PURCHASE';
+ALTER TYPE cash_movement_type ADD VALUE IF NOT EXISTS 'EMPLOYEE_PAYMENT';
+ALTER TYPE print_document_type ADD VALUE IF NOT EXISTS 'KITCHEN_CANCELLATION';
+ALTER TYPE sync_operation_status ADD VALUE IF NOT EXISTS 'CONFLICT';
+

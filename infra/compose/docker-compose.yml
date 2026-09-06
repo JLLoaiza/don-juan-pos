@@ -1,0 +1,61 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - don_juan_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d app"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    build:
+      context: ../..
+      dockerfile: infra/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/app
+    command: pnpm migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/app
+      API_HOST: 0.0.0.0
+      API_PORT: "3000"
+    command: pnpm dev:api
+    ports:
+      - "3000:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: infra/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/app
+      WORKER_ID: compose-worker
+      PRINT_SINK_DIRECTORY: /runtime/prints
+    command: pnpm dev:worker
+    volumes:
+      - don_juan_prints:/runtime/prints
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  don_juan_postgres:
+  don_juan_prints:
