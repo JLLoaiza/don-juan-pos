@@ -1,0 +1,18 @@
+{
+  "name": "@don-juan/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "predev": "pnpm --filter @don-juan/contracts build && pnpm --filter @don-juan/database build",
+    "dev": "tsx watch src/main.ts"
+  },
+  "dependencies": {
+    "@don-juan/contracts": "workspace:*",
+    "@don-juan/database": "workspace:*",
+    "fastify": "^5.12.0"
+  }
+}
