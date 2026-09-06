@@ -1,0 +1,8 @@
+node_modules/
+dist/
+coverage/
+.env
+.pnpm-store/
+.runtime/
+bd/postgres-data/
+*.log

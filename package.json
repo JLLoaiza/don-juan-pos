@@ -1,0 +1,21 @@
+{
+  "name": "don-juan-pos-erp",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.19.0",
+  "scripts": {
+    "build": "tsc -b",
+    "dev:api": "pnpm --filter @don-juan/api dev",
+    "dev:worker": "pnpm --filter @don-juan/worker dev",
+    "lint": "pnpm typecheck",
+    "migrate": "pnpm --filter @don-juan/database migrate",
+    "test": "pnpm build && pnpm -r test",
+    "typecheck": "tsc -b --pretty false"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^5.0.0"
+  }
+}
