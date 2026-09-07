@@ -91,7 +91,8 @@ export const AccountItemSnapshotSchema = z.object({
   productName: z.string(),
   quantity: PositiveDecimalStringSchema,
   unitSalePrice: NonNegativeDecimalStringSchema,
-  unitCost: NonNegativeDecimalStringSchema,
+  /** Historical cost is withheld unless the authenticated user has products.view_cost. */
+  unitCost: NonNegativeDecimalStringSchema.nullable(),
   discountTotal: NonNegativeDecimalStringSchema,
   taxRate: NonNegativeDecimalStringSchema,
   lineSubtotal: NonNegativeDecimalStringSchema,

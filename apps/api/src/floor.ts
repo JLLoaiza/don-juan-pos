@@ -85,9 +85,9 @@ export class FloorService {
     return { diningAreas: areas.map((row) => ({ id: row.id, name: row.name, active: row.active })), tables: tables.map((row) => ({ id: row.id, diningAreaId: row.dining_area_id, name: row.name, capacity: Number(row.capacity), status: row.status, active: row.active, openAccountId: row.open_account_id })) };
   }
 
-  async account(actor: FloorActor, accountId: string): Promise<AccountSnapshot> {
+  async account(actor: FloorActor, accountId: string, includeCosts = false): Promise<AccountSnapshot> {
     const client = await this.pool.connect();
-    try { return this.accountSnapshot(client, accountId, actor.branchId); } finally { client.release(); }
+    try { return this.accountSnapshot(client, accountId, actor.branchId, includeCosts); } finally { client.release(); }
   }
 
   async openAccount(actor: FloorActor, operationId: string, input: OpenAccountRequest): Promise<AccountSnapshot> {
@@ -113,8 +113,8 @@ export class FloorService {
     });
   }
 
-  async confirmConsumption(actor: FloorActor, operationId: string, accountId: string, input: ConfirmConsumptionRequest): Promise<ConfirmConsumptionResponse> {
-    return this.command(actor, operationId, "accounts.confirm_consumption", { accountId, ...input }, async (client, companyId) => {
+  async confirmConsumption(actor: FloorActor, operationId: string, accountId: string, input: ConfirmConsumptionRequest, includeCosts = false): Promise<ConfirmConsumptionResponse> {
+    const result = await this.command(actor, operationId, "accounts.confirm_consumption", { accountId, ...input }, async (client, companyId) => {
       const account = await one<any>(client, "SELECT * FROM accounts WHERE id=$1 AND branch_id=$2 FOR UPDATE", [accountId, actor.branchId]);
       if (!account) throw new CatalogRuleViolation("Account was not found in the current branch");
       if (account.status !== "OPEN") throw new CatalogRuleViolation("Only an open account can receive consumption");
@@ -190,12 +190,13 @@ export class FloorService {
       const print = await one<any>(client, `INSERT INTO print_jobs(id,branch_id,printer_type,printer_id,document_type,reference_type,reference_id,payload,status,error_message)
         VALUES($1,$2,'KITCHEN',$3,'KITCHEN_ORDER','KITCHEN_ORDER',$4,$5,$6,$7) RETURNING *`, [uuidv7(), actor.branchId, printer?.id ?? null, kitchenOrder.id, kitchenContent, printer ? "PENDING" : "FAILED", printer ? null : "No active kitchen printer is configured"]);
       if (!print) throw new Error("Print job insert did not return a row");
-      const accountResult = await this.accountSnapshot(client, accountId, actor.branchId);
+      const accountResult = await this.accountSnapshot(client, accountId, actor.branchId, true);
       const result: ConfirmConsumptionResponse = { account: accountResult, kitchenOrder: { id: kitchenOrder.id, ticketNumber: kitchenOrder.ticket_number, orderType: kitchenOrder.order_type, content: kitchenOrder.content, createdAt: asDate(kitchenOrder.created_at) }, printJob: { id: print.id, printerId: print.printer_id, documentType: print.document_type, status: print.status, attempts: Number(print.attempts), createdAt: asDate(print.created_at) }, warnings };
       await this.audit(client, actor, companyId, "account.consumption_confirmed", "account", accountId, { version: Number(account.version) }, { itemIds: createdItems.map((item) => item.id), result });
       await this.outbox(client, actor, operationId, "accounts.confirm_consumption", "account", accountId, result);
       return result;
     });
+    return includeCosts ? result : redactConsumptionCosts(result);
   }
 
   private async recipeIngredients(client: PoolClient, productId: string, multiplier: string): Promise<Ingredient[]> {
@@ -213,14 +214,14 @@ export class FloorService {
     return components.map((component) => ({ inventoryItemId: component.inventory_item_id, quantity: multiplyDecimals(decimal(component.quantity), multiplier) }));
   }
 
-  private async accountSnapshot(client: PoolClient, accountId: string, branchId: string): Promise<AccountSnapshot> {
+  private async accountSnapshot(client: PoolClient, accountId: string, branchId: string, includeCosts = false): Promise<AccountSnapshot> {
     const account = await one<any>(client, "SELECT * FROM accounts WHERE id=$1 AND branch_id=$2", [accountId, branchId]);
     if (!account) throw new CatalogRuleViolation("Account was not found in the current branch");
     const items = (await client.query<any>("SELECT * FROM account_items WHERE account_id=$1 ORDER BY created_at,id", [accountId])).rows;
     const resultItems = [] as any[];
     for (const item of items) {
       const additionals = (await client.query<any>("SELECT * FROM account_item_accompaniments WHERE account_item_id=$1 ORDER BY created_at,id", [item.id])).rows;
-      resultItems.push({ id:item.id,productId:item.product_id,productName:item.product_name_snapshot,quantity:decimal(item.quantity),unitSalePrice:decimal(item.unit_price),unitCost:decimal(item.unit_cost),discountTotal:decimal(item.discount_total),taxRate:decimal(item.tax_rate_snapshot),lineSubtotal:decimal(item.line_subtotal),lineTotal:decimal(item.line_total),notes:item.notes,status:item.status,additionals:additionals.map((a)=>({accompanimentId:a.accompaniment_id,name:a.name_snapshot,quantity:decimal(a.quantity),unitPrice:decimal(a.unit_price),noCharge:a.no_charge,included:a.included,total:decimal(a.total)})),consumptionSnapshot:item.consumption_snapshot,createdAt:asDate(item.created_at) });
+      resultItems.push({ id:item.id,productId:item.product_id,productName:item.product_name_snapshot,quantity:decimal(item.quantity),unitSalePrice:decimal(item.unit_price),unitCost:includeCosts ? decimal(item.unit_cost) : null,discountTotal:decimal(item.discount_total),taxRate:decimal(item.tax_rate_snapshot),lineSubtotal:decimal(item.line_subtotal),lineTotal:decimal(item.line_total),notes:item.notes,status:item.status,additionals:additionals.map((a)=>({accompanimentId:a.accompaniment_id,name:a.name_snapshot,quantity:decimal(a.quantity),unitPrice:decimal(a.unit_price),noCharge:a.no_charge,included:a.included,total:decimal(a.total)})),consumptionSnapshot:includeCosts ? item.consumption_snapshot : redactSnapshotCosts(item.consumption_snapshot),createdAt:asDate(item.created_at) });
     }
     return { id:account.id,tableId:account.table_id,customerId:account.customer_id,openedByUserId:account.opened_by_user_id,status:account.status,openedAt:asDate(account.opened_at),closedAt:account.closed_at ? asDate(account.closed_at) : null,subtotal:decimal(account.subtotal),discountTotal:decimal(account.discount_total),servicePercentage:decimal(account.service_percentage),serviceTotal:decimal(account.service_total),taxTotal:decimal(account.tax_total),total:decimal(account.total),notes:account.notes,version:Number(account.version),items:resultItems };
   }
@@ -233,4 +234,28 @@ export class FloorService {
 
 function subtractStock(stock: string, consumed: string): string {
   return addDecimals(stock, `-${consumed}`);
+}
+
+function redactSnapshotCosts(snapshot: unknown): Record<string, unknown> {
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return {};
+  const value = snapshot as Record<string, unknown>;
+  const { totalCost: _totalCost, ingredients, ...safe } = value;
+  return {
+    ...safe,
+    ...(Array.isArray(ingredients) ? { ingredients: ingredients.map((ingredient) => {
+      if (!ingredient || typeof ingredient !== "object" || Array.isArray(ingredient)) return ingredient;
+      const { unitCost: _unitCost, ...safeIngredient } = ingredient as Record<string, unknown>;
+      return safeIngredient;
+    }) } : {}),
+  };
+}
+
+function redactConsumptionCosts(result: ConfirmConsumptionResponse): ConfirmConsumptionResponse {
+  return {
+    ...result,
+    account: {
+      ...result.account,
+      items: result.account.items.map((item) => ({ ...item, unitCost: null, consumptionSnapshot: redactSnapshotCosts(item.consumptionSnapshot) })),
+    },
+  };
 }

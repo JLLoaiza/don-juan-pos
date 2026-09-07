@@ -34,9 +34,12 @@ describeIntegration("floor consumption transaction", () => {
     const opened = await floor.openAccount(actor, randomUUID(), { tableId, notes: "Birthday", customerId: null });
     expect(opened.status).toBe("OPEN");
     const operationId = randomUUID();
-    const result = await floor.confirmConsumption(actor, operationId, opened.id, { expectedVersion: opened.version, items: [{ productId, quantity: "2", selectedAdditionals: [], notes: "Well done" }] });
-    const replay = await floor.confirmConsumption(actor, operationId, opened.id, { expectedVersion: opened.version, items: [{ productId, quantity: "2", selectedAdditionals: [], notes: "Well done" }] });
+    const result = await floor.confirmConsumption(actor, operationId, opened.id, { expectedVersion: opened.version, items: [{ productId, quantity: "2", selectedAdditionals: [], notes: "Well done" }] }, true);
+    const replay = await floor.confirmConsumption(actor, operationId, opened.id, { expectedVersion: opened.version, items: [{ productId, quantity: "2", selectedAdditionals: [], notes: "Well done" }] }, true);
     expect(replay).toEqual(result);
+    const restricted = await floor.account(actor, opened.id);
+    expect(restricted.items[0]).toMatchObject({ unitCost: null });
+    expect(restricted.items[0]?.consumptionSnapshot).not.toHaveProperty("totalCost");
     expect(result).toMatchObject({ account: { status: "OPEN", subtotal: "40.00", total: "40.00", version: 2, items: [{ productId, quantity: "2.000000", unitCost: "6.000000", lineTotal: "40.00", notes: "Well done" }] }, kitchenOrder: { orderType: "ORDER" }, printJob: { documentType: "KITCHEN_ORDER", status: "FAILED" }, warnings: [] });
     const stock = await pool.query("SELECT current_stock FROM inventory_items WHERE id=$1", [inventoryId]);
     expect(stock.rows[0]?.current_stock).toBe("4.000000");
