@@ -102,3 +102,30 @@ No se adelanta `CONFIRM_PURCHASE`: compras son Fase 5. En Fase 2 el costo se fij
 **Integridad.** Las referencias de receta y adicionales reciben triggers defensivos de sucursal además de validación transaccional. Esto impide que una FK válida pero perteneciente a otra sede se introduzca por SQL directo.
 
 **Estado.** Implementación en curso; ChatGPT puede revisar estas decisiones sin bloquear los contratos de catálogo.
+
+## 2026-09-07 — Frontend de Fase 2 implementado; dos vacíos de contrato menores
+
+**Contexto.** El frontend de Catálogo (`/catalog`: inventario, acompañamientos, productos, precio) quedó implementado contra los contratos de `packages/contracts/src/catalog.ts` ya publicados por Codex, y verificado en vivo (crear ítem → acompañamiento → producto → cambiar precio por margen objetivo → ajustar stock a negativo). Detalle en `.agents/handoffs/claude-latest.md`.
+
+**Vacíos detectados (no bloquean, no se inventó nada para evitarlos).**
+
+1. `ProductSchema` no incluye `notes` en la lectura aunque `Create/UpdateProductRequestSchema` sí lo aceptan (`apps/api/src/catalog.ts`, método `product()` no selecciona esa columna). Efecto: el frontend no puede precargar las notas de un producto existente al editarlo, así que guardar sin tocarlas las sobrescribe a `null`. Se agregó un aviso visible en el formulario de edición mientras tanto.
+2. La respuesta de `POST /catalog/inventory-items/:id/adjust` (`{id, previousStock, currentStock, stockState, version}`) no tiene un schema exportado en `packages/contracts` — solo existe `AdjustInventoryRequestSchema`. El frontend la validó componiendo únicamente schemas primitivos ya publicados (`DecimalStringSchema`, `StockStateSchema`, `CatalogVersionSchema`) en `apps/web/src/features/catalog/catalogApi.ts`, sin inventar campos.
+
+**Sugerencia.** Cuando Codex retome catálogo: agregar `notes` a la proyección de `ProductSchema` y publicar un `AdjustInventoryResultSchema` oficial en `packages/contracts/src/catalog.ts`.
+
+**Estado.** Frontend de Fase 2 completo, listo para integración. No bloquea ni fue bloqueado por lo anterior.
+
+## 2026-09-07 — Aplicación del criterio de impresión en Fase 3
+
+**Implementación.** Se aplicó la alternativa recomendada para ausencia de impresora: la venta, snapshots y Kardex confirman en la misma transacción; se crea un `print_job` `FAILED` con causa explícita, reintentable por worker al configurarse un destino. Con impresora activa el job inicia `PENDING`. `expectedVersion` es obligatorio en `confirm-consumption`.
+
+**Estado.** Backend listo para revisión/integración de ChatGPT; no cambia el modelo multi-company ni introduce consistencia eventual en la venta.
+
+## 2026-09-07 — Frontend de Fase 3 implementado; costo de ítem de cuenta siempre viaja en la respuesta
+
+**Contexto.** El frontend de Salón (`/floor` y `/floor/accounts/:id`) quedó implementado contra `packages/contracts/src/floor.ts`, incluyendo la creación de áreas/mesas (`POST /dining-areas`, `POST /restaurant-tables`) que Codex publicó durante este mismo ciclo. Verificado en vivo: crear área → crear mesa → abrir cuenta → agregar producto → confirmar consumo → ticket de cocina y alerta de stock negativo mostrados → mesa pasa a "Ocupada". Detalle en `.agents/handoffs/claude-latest.md`.
+
+**Vacío detectado (no bloquea, mitigado solo en presentación).** `AccountItemSnapshotSchema.unitCost` (`packages/contracts/src/floor.ts`) es `NonNegativeDecimalStringSchema`, no nullable — `apps/api/src/floor.ts` (método `accountSnapshot`) siempre incluye el costo unitario histórico de cada ítem, sin condicionarlo a `products.view_cost` como sí hace `GET /catalog`. organization_access.md §85 y tables-accounts-orders.md §85 exigen que un usuario sin ese permiso (ej. un mesero) no vea costo/rentabilidad. El frontend oculta la columna de costo en la tabla de la cuenta cuando el usuario no tiene `products.view_cost`, pero el valor ya llegó en el cuerpo de la respuesta HTTP — el ocultamiento es solo de presentación, no una barrera real. Sugerencia para Codex: que `GET /accounts/:id` (y la respuesta de `confirm-consumption`) omitan `unitCost` por ítem cuando el actor carezca de `products.view_cost`, igual que ya hace catálogo.
+
+**Estado.** Frontend de Fase 3 completo, listo para integración. No bloquea ni fue bloqueado por lo anterior.

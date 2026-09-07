@@ -2,52 +2,55 @@
 
 ## Fase realizada
 
-Fase 1 — Identidad y contexto de sucursal (frontend). Estado: **COMPLETE**. Este ciclo corrige el flujo de auth para adaptarse al contrato que Codex corrigió (`d97e4ca` → corrección posterior "Corrección de Fase 1 — compañía interna, sucursal pública"): la compañía dejó de ser un concepto de UX.
+Fase 3 — Salón, mesas, cuentas y consumo (frontend). Estado: **COMPLETE**. Backend, contratos y migraciones de Fase 3 fueron publicados y commiteados por Codex durante este mismo ciclo (`0e52c3a feat(floor): add transactional table consumption`, más los ajustes de trigger `0014`/`0015` y la publicación posterior de `POST /dining-areas`/`POST /restaurant-tables`); implementé la UI completa contra esos contratos, incluyendo la creación de áreas/mesas que se agregó a mitad de sesión.
 
-## Qué cambió y por qué
+## Pantallas y flujos implementados
 
-Codex eliminó `companyId` de `POST /auth/login` y `company` de `AuthContext`/`AuthenticatedContext` (la compañía se resuelve internamente desde la sesión del usuario). En paralelo, ya había recibido instrucción explícita de eliminar cualquier selección de compañía del frontend. Ambas cosas apuntaban en la misma dirección, así que:
+Todo bajo `apps/web/src/features/floor/`, montado en `/floor` (reemplaza el placeholder) y en la nueva ruta `/floor/accounts/:accountId`:
 
-- **Login**: solo pide usuario/contraseña. Se eliminó por completo `companyId` del formulario, del estado, del payload y de los tipos. También se eliminó el módulo intermedio `companyConfig.ts`/`VITE_DEFAULT_COMPANY_ID` que había creado en el ciclo anterior como workaround temporal (ya no hace falta: el backend ya no requiere ese dato).
-- **Una sola sucursal accesible**: se entra automáticamente, sin paso de selección (`AppShell` ya mostraba esto como texto plano; sin cambios).
-- **Varias sucursales accesibles**: el backend ahora devuelve `activeBranch: null` explícitamente hasta que el cliente llama `POST /me/active-branch`. Antes el backend auto-seleccionaba la primera sucursal por orden de ID (un comportamiento no especificado); con la corrección, `AppShell` distingue dos casos que antes eran indistinguibles:
-  - **multi-sucursal sin activa** → estado "Elige una sucursal" (normal, no es un error; el selector ya está visible en el header).
-  - **una sola sucursal sin activa** → estado de error real ("contacta a un administrador"), caso que no debería ocurrir según la especificación pero se mantiene como red de seguridad.
-- Ningún dato de `company` se muestra en ninguna pantalla (nunca se mostró, pero ahora tampoco existe en el tipo — no hay riesgo de reintroducirlo por accidente).
-
-## Estado conceptual del frontend
-
-Ya coincidía con lo pedido antes de este ciclo y sigue así: `AuthContextValue` expone `context.user`, `context.branches`, `context.activeBranch`, `context.permissions` (más `status`/`session`/`isStale` de manejo de sesión). Nada depende de seleccionar compañía.
+- **Salón (`FloorPage`)**: mesas agrupadas por área, coloreadas por estado (disponible=blanco, ocupada=amarillo, reservada=naranja, según §8 de `tables-accounts-orders.md`). Click en una mesa con cuenta abierta navega a esa cuenta; click en una mesa disponible/reservada abre una cuenta nueva (`POST /accounts`) y navega a ella. Botones "Nueva área" / "Nueva mesa" (gateados por `dining_areas.create` / `tables.create`) para dar de alta áreas y mesas — necesarios porque antes de este ciclo no existía forma de poblar el salón salvo SQL directo; Codex publicó `POST /dining-areas` y `POST /restaurant-tables` durante la sesión y los consumí en cuanto aparecieron.
+- **Cuenta (`AccountPage`)**: encabezado con estado (Abierta/Pagada/Anulada), tabla de ítems confirmados (producto, cantidad, precio, costo si hay permiso, total de línea, estado, notas, adicionales anidados), totales (subtotal, descuentos, servicio, impuestos, total). Banner de confirmación tras enviar consumo: número de ticket de cocina y estado del trabajo de impresión, o alerta de stock negativo (nunca bloquea la venta).
+- **Agregar consumo (`ConsumptionForm`)**: solo visible en cuenta `OPEN` con los tres permisos que exige el endpoint (`accounts.update`, `sales.add_items`, `kitchen.send`). Permite agregar varias líneas de producto (desde el catálogo ya cargado), cantidad entera positiva, notas por línea, y selección de adicionales configurados para ese producto específico (con casilla "sin costo" solo si el adicional lo permite). Valida con el mismo `ConfirmConsumptionRequestSchema` publicado antes de enviar.
+- Estados de carga/error/vacío en ambas pantallas (`ErrorState` forbidden/network/server con reintento); evita doble envío con `submitting` por formulario; recarga la cuenta tras confirmar consumo.
+- El precio, costo, impuesto, receta y totales los resuelve siempre el servidor; el frontend solo envía intención (`productId`, `quantity`, `selectedAdditionals`, `notes`) — nunca precio ni costo.
 
 ## Contratos consumidos
 
-`POST /auth/login` `{ username, password }`, `POST /auth/refresh`, `GET /me/context`, `POST /me/active-branch` `{ branchId }` — todos desde `@don-juan/contracts` (reconstruido en este ciclo para tomar el cambio de Codex).
+`GET /floor`, `POST /dining-areas`, `POST /restaurant-tables`, `GET /accounts/:id`, `POST /accounts`, `POST /accounts/:id/confirm-consumption` — todos desde `@don-juan/contracts` (`packages/contracts/src/floor.ts`). Para el selector de productos/adicionales dentro de una cuenta reutilicé `useCatalog()` de Fase 2 (ya construido), que exige `products.view` + `inventory.view` + `accompaniments.view` juntos — si un rol de mesero no tiene esos tres permisos, ese bloque muestra su propio `ErrorState`, sin tumbar el resto de la pantalla de cuenta.
 
-## Limpieza realizada
+## Vacío de contrato detectado (documentado, no inventado)
 
-- Eliminado: `apps/web/src/features/auth/companyConfig.ts`, campo/estado `companyId` en `LoginPage.tsx`, `VITE_DEFAULT_COMPANY_ID` de `.env.example` y `vite-env.d.ts`, todo fixture de test con `companyId`/`company: {...}`.
-- No quedó ningún componente, mock ni test que obligue a elegir compañía.
+`AccountItemSnapshotSchema.unitCost` no es nullable — el backend siempre lo envía en `GET /accounts/:id` y en la respuesta de `confirm-consumption`, a diferencia de `GET /catalog` que sí oculta costo sin `products.view_cost`/`inventory.view_cost`. El frontend oculta la columna de costo en la tabla de ítems cuando el usuario no tiene `products.view_cost`, pero es solo ocultamiento de presentación: el valor ya viaja en el cuerpo de la respuesta HTTP que el navegador recibió. Documentado en `.agents/coordination.md` con la sugerencia de que el backend omita `unitCost` por ítem según permiso, igual que ya hace catálogo.
 
-## Tests añadidos/actualizados
+## Mocks temporales
 
-- `LoginPage.test.tsx`: nunca aparece un campo/etiqueta de compañía; el login se envía con `{ username, password }` exactamente.
-- `AuthProvider.test.tsx`: una sola sucursal → `activeBranch` se resuelve automáticamente tras login; varias sucursales → `activeBranch: null` hasta elegir; cambio de sucursal actualiza `activeBranch` y `permissions` (la clave que cualquier feature branch-scoped debería usar en su `useEffect` para recargar/invalidar).
-- `AppShell.test.tsx`: sucursal única → texto plano, sin combobox; varias sucursales → combobox y cambia sucursal al seleccionar; varias sucursales sin activa → prompt "Elige una sucursal" (no outlet, no error); una sola sucursal sin activa → error real; ninguna variante muestra nombre/etiqueta de compañía.
-- `App.test.tsx`: integración end-to-end sin campo de compañía en ningún punto del flujo.
-- `pnpm --filter @don-juan/web test`: **60/60**. `pnpm test` (monorepo completo): verde.
+Ninguno. Todo consume la API real.
+
+## Tests ejecutados
+
+- `pnpm --filter @don-juan/web test`: **98/98** (77 previos de Fase 1+2 + 1 nuevo test de `putJson` que ya estaba + 20 nuevos de Fase 3: `floorApi.test.ts` cubre forma de cada request incluyendo `Idempotency-Key`; `FloorPage.test.tsx` cubre loading, 403→forbidden con reintento, error de red, estado vacío, navegación a cuenta existente al hacer click en mesa ocupada, apertura de cuenta en mesa disponible con permiso, mesa deshabilitada sin permiso, ocultar/mostrar acciones de crear área/mesa según permiso, y creación end-to-end de área y de mesa con recarga; `AccountPage.test.tsx` cubre loading, ítems/totales renderizados, ocultar/mostrar costo unitario según `products.view_cost`, no ofrecer "agregar consumo" en cuenta `PAID` ni sin los tres permisos requeridos, confirmación de consumo end-to-end con banner de ticket de cocina, y banner de alerta de stock negativo sin tratarlo como fallo). Tuve que corregir `App.test.tsx` (el test de `/floor` esperaba el placeholder anterior) y ajustar dos fixtures de test que usaban IDs no-UUID donde el propio `ConfirmConsumptionRequestSchema`/`CreateRestaurantTableRequestSchema` sí exige UUID.
+- `pnpm -w typecheck` y `pnpm -w test`: correctos en todo el workspace.
 
 ## Verificación manual
 
-Reconstruí y reinicié el contenedor `compose-web-1` (estaba desactualizado, ver nota abajo) y verifiqué en vivo contra la API real con el usuario de desarrollo (`admin`, una sola sucursal "Don Juan Centro"): login sin pedir compañía, entra directo a la sucursal, nombre de usuario y botón de logout visibles, sin ningún rastro de compañía en la UI.
+Reconstruí y reinicié `compose-web-1` dos veces en este ciclo (antes y después de agregar creación de áreas/mesas). Con el usuario de desarrollo (`admin`, permisos completos), contra la API y PostgreSQL reales del Compose local, de punta a punta:
 
-## Nota operativa (no relacionada con esta tarea, pero relevante)
-
-Detecté que `compose-web-1` se había quedado con una imagen construida *antes* de mis commits de la fase de auth anterior, lo que causaba que rutas protegidas no redirigieran a `/login` (se veía "No encontrado" en su lugar). Lo reconstruí dos veces en esta sesión (antes y después de este cambio). Si en el futuro algo del frontend se ve desactualizado en Compose, lo primero a revisar es si la imagen `compose-web` es más vieja que el último commit de `apps/web`.
+1. Creé un área ("Salón principal") y una mesa ("Mesa 1", 4 personas, Disponible) desde la UI — antes de esto no existía ningún dato de salón en la base de desarrollo.
+2. Click en la mesa disponible → abrió una cuenta nueva y navegó a `/floor/accounts/:id`.
+3. Agregué "Combo pollo" (producto creado en la verificación de Fase 2) y confirmé consumo.
+4. La cuenta mostró el ítem con precio/costo/línea correctos, totales recalculados por el servidor, banner "Enviado a cocina (ticket …)" y una alerta de stock negativo real (el ítem de inventario "Carne de res" ya estaba en stock negativo desde la prueba de Fase 2; la venta se registró igual, sin bloquear, tal como exige la especificación).
+5. Volví a `/floor`: la mesa ahora se ve "Ocupada" en amarillo, confirmando la transición automática de estado.
 
 ## Dependencias backend pendientes
 
-Ninguna para esta corrección. Para la siguiente fase (Salón/mesas/cuentas) sigue pendiente el contrato de `dining_areas`/`restaurant_tables`/`accounts`.
+- El vacío de contrato de `unitCost` no-nullable en ítems de cuenta (no bloquea).
+- Para Fase 4 (Cobro: descuentos, servicio, divisiones, pagos, caja) no hay contrato publicado aún.
+
+## Riesgos o deudas reales
+
+- No implementé anulación de cuenta (`accounts.void`), anulación de ítem confirmado, mover cuenta entre mesas, ni asociar/cambiar cliente — ninguno de esos endpoints existe todavía en el backend (`tables-accounts-orders.md` los define, pero Codex documentó explícitamente que Fase 3 fue solo el vertical slice: abrir cuenta → confirmar consumo). No inventé esos endpoints.
+- El picker de productos dentro de una cuenta depende de que el rol tenga los tres permisos de vista de catálogo (`products.view`, `inventory.view`, `accompaniments.view`); un rol "Mesero" real necesitaría que un administrador se los conceda para poder tomar pedidos — es una decisión de configuración de roles, no algo que el frontend deba resolver.
 
 ## Siguiente fase frontend esperada
 
-No se avanza de fase (instrucción explícita de este ciclo). Sigue pendiente Salón (`/floor`) en cuanto exista su contrato.
+No avanzo a Fase 4. Fase 3 queda con frontend completo y lista para integración.
