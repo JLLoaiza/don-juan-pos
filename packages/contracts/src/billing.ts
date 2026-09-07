@@ -50,7 +50,8 @@ export const CashSessionSchema = z.object({
   openedByUserId: EntityIdSchema, openedAt: z.string().datetime(), closedAt: z.string().datetime().nullable(), version: PositiveVersionSchema,
 });
 export const OpenCashSessionRequestSchema = z.object({ cashRegisterId: EntityIdSchema, openingAmount: MoneySchema, notes: NotesSchema });
-export const CashAdjustmentRequestSchema = z.object({ expectedVersion: PositiveVersionSchema, amount: PositiveMoneySchema, reason: z.string().trim().min(1).max(2_000) });
+export const CashAdjustmentDirectionSchema = z.enum(["INCREASE", "DECREASE"]);
+export const CashAdjustmentRequestSchema = z.object({ expectedVersion: PositiveVersionSchema, amount: PositiveMoneySchema, direction: CashAdjustmentDirectionSchema, reason: z.string().trim().min(1).max(2_000) });
 export const CloseCashSessionRequestSchema = z.object({ expectedVersion: PositiveVersionSchema, countedCash: MoneySchema, notes: NotesSchema, printReceipt: z.boolean().default(true) });
 
 export type PaymentSnapshot = z.infer<typeof PaymentSnapshotSchema>;
@@ -61,5 +62,6 @@ export type ConfigureServiceRequest = z.infer<typeof ConfigureServiceRequestSche
 export type CreateItemSplitsRequest = z.infer<typeof CreateItemSplitsRequestSchema>;
 export type CreatePercentageSplitsRequest = z.infer<typeof CreatePercentageSplitsRequestSchema>;
 export type CashSession = z.infer<typeof CashSessionSchema>;
+export type CashAdjustmentRequest = z.infer<typeof CashAdjustmentRequestSchema>;
 export type OpenCashSessionRequest = z.infer<typeof OpenCashSessionRequestSchema>;
 export type CloseCashSessionRequest = z.infer<typeof CloseCashSessionRequestSchema>;

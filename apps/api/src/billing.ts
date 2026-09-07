@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { ApplyAccountDiscountRequest, BillingSnapshot, CashSession, ConfigureServiceRequest, OpenCashSessionRequest, PaymentSnapshot, RegisterPaymentRequest } from "@don-juan/contracts";
+import type { ApplyAccountDiscountRequest, BillingSnapshot, CashAdjustmentRequest, CashSession, CloseCashSessionRequest, ConfigureServiceRequest, OpenCashSessionRequest, PaymentSnapshot, RegisterPaymentRequest } from "@don-juan/contracts";
 import { addDecimals, compareDecimals, divideDecimals, multiplyDecimals, subtractDecimals, uuidv7 } from "@don-juan/domain";
 import { one, withTransaction } from "@don-juan/database";
 import type { Pool, PoolClient } from "pg";
@@ -98,6 +98,26 @@ export class BillingService {
     });
   }
 
+  async adjustCashSession(actor: BillingActor, operationId: string, sessionId: string, input: CashAdjustmentRequest): Promise<CashSession> {
+    return this.command(actor,operationId,"cash_sessions.adjust",{sessionId,...input},async(client,companyId)=>{
+      const session=await one<any>(client,"SELECT cs.* FROM cash_sessions cs JOIN cash_registers cr ON cr.id=cs.cash_register_id WHERE cs.id=$1 AND cr.branch_id=$2 FOR UPDATE",[sessionId,actor.branchId]);
+      if(!session||session.status!=="OPEN")throw new CatalogRuleViolation("Cash session must be open in the current branch"); if(Number(session.version)!==input.expectedVersion)throw new CatalogConflict();
+      const movementId=uuidv7(); await client.query("INSERT INTO cash_movements(id,cash_session_id,movement_type,amount,adjustment_direction,description,created_by_user_id,operation_id) VALUES($1,$2,'ADJUSTMENT',$3,$4,$5,$6,$7)",[movementId,sessionId,input.amount,input.direction,input.reason,actor.userId,operationId]);
+      const row=await one<any>(client,"UPDATE cash_sessions SET version=version+1 WHERE id=$1 RETURNING *",[sessionId]); if(!row)throw new Error("Cash session update did not return a row"); const result=cashSessionSnapshot(row);
+      await this.audit(client,actor,companyId,"cash_session.adjusted","cash_movement",movementId,null,{direction:input.direction,amount:input.amount,reason:input.reason}); await this.outbox(client,actor,operationId,"cash_sessions.adjust","cash_session",sessionId,{movementId,result}); return result;
+    });
+  }
+
+  async closeCashSession(actor: BillingActor, operationId: string, sessionId: string, input: CloseCashSessionRequest): Promise<CashSession> {
+    return this.command(actor,operationId,"cash_sessions.close",{sessionId,...input},async(client,companyId)=>{
+      const session=await one<any>(client,"SELECT cs.*,cr.name register_name FROM cash_sessions cs JOIN cash_registers cr ON cr.id=cs.cash_register_id WHERE cs.id=$1 AND cr.branch_id=$2 FOR UPDATE",[sessionId,actor.branchId]);
+      if(!session||session.status!=="OPEN")throw new CatalogRuleViolation("Cash session must be open in the current branch"); if(Number(session.version)!==input.expectedVersion)throw new CatalogConflict();
+      const movements=await one<any>(client,`SELECT COALESCE(SUM(CASE WHEN movement_type IN ('SALE','DEPOSIT') THEN amount WHEN movement_type IN ('PURCHASE','EXPENSE','WITHDRAWAL','EMPLOYEE_PAYMENT') THEN -amount WHEN movement_type='ADJUSTMENT' AND adjustment_direction='INCREASE' THEN amount WHEN movement_type='ADJUSTMENT' THEN -amount ELSE 0 END),0)::text net FROM cash_movements WHERE cash_session_id=$1`,[sessionId]);
+      const expected=addDecimals(decimal(session.opening_amount),movements?.net??"0"); const difference=subtractDecimals(input.countedCash,expected); const snapshot={cashSessionId:sessionId,cashRegister:session.register_name,openedAt:instant(session.opened_at),closedAt:new Date().toISOString(),openingAmount:decimal(session.opening_amount),expectedCash:expected,countedCash:input.countedCash,difference};
+      const row=await one<any>(client,"UPDATE cash_sessions SET status='CLOSED',closed_at=NOW(),closed_by_user_id=$2,expected_cash=$3,counted_cash=$4,difference=$5,notes=COALESCE($6,notes),close_snapshot=$7,version=version+1 WHERE id=$1 RETURNING *",[sessionId,actor.userId,expected,input.countedCash,difference,input.notes??null,snapshot]); if(!row)throw new Error("Cash close update did not return a row"); const result=cashSessionSnapshot(row);
+      await this.audit(client,actor,companyId,"cash_session.closed","cash_session",sessionId,null,snapshot); await this.outbox(client,actor,operationId,"cash_sessions.close","cash_session",sessionId,snapshot); return result;
+    });
+  }
   async registerPayment(actor: BillingActor, operationId: string, accountId: string, input: RegisterPaymentRequest): Promise<PaymentSnapshot> {
     return this.command(actor,operationId,"payments.register",{accountId,...input},async(client,companyId)=>{
       if(input.accountSplitId) throw new CatalogRuleViolation("Split payments will be enabled after split finalization is implemented");

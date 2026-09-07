@@ -72,3 +72,5 @@ Descuentos y servicio ya tienen las rutas indicadas. Los contratos de divisiones
 - Compilación de contratos y typecheck de API correctos.
 - API HTTP: 25 pruebas correctas; incluye validación de autenticación, idempotencia, permisos de descuentos/servicio y eliminación de `companyId` en comandos de Fase 4.
 - Se añadió prueba PostgreSQL de apertura, pago efectivo, movimiento, cierre de cuenta, recibo, outbox y replay idempotente. Queda pendiente ejecutarla en el entorno local porque Docker Desktop no está iniciado.
+
+Actualización: POST /cash-sessions/:id/adjustments recibe { expectedVersion, amount, direction: INCREASE|DECREASE, reason } con cash.adjust; POST /cash-sessions/:id/close recibe { expectedVersion, countedCash, notes?, printReceipt? } con cash.close. Ambos usan Idempotency-Key; el cierre bloquea la sesión, calcula efectivo esperado desde movimientos y persiste snapshot inmutable.
