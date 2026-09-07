@@ -6,3 +6,5 @@ export * from "./catalog.js";
 export * from "./floor.js";
 
 export * from "./billing.js";
+
+export * from './procurement.js';
