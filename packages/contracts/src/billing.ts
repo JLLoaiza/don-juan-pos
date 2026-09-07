@@ -16,6 +16,7 @@ export const CashSessionStatusSchema = z.enum(["OPEN", "CLOSED"]);
 export const CashMovementTypeSchema = z.enum(["SALE", "EXPENSE", "WITHDRAWAL", "DEPOSIT", "ADJUSTMENT", "PURCHASE", "EMPLOYEE_PAYMENT"]);
 
 export const PaymentMethodSchema = z.object({ id: EntityIdSchema, name: z.string(), type: PaymentMethodTypeSchema, active: z.boolean() });
+export const PaymentMethodListSchema = z.object({ paymentMethods: z.array(PaymentMethodSchema) });
 export const PaymentSnapshotSchema = z.object({
   id: EntityIdSchema, accountId: EntityIdSchema, accountSplitId: EntityIdSchema.nullable(), paymentMethodId: EntityIdSchema,
   paymentMethodName: z.string(), paymentMethodType: PaymentMethodTypeSchema, status: PaymentStatusSchema,

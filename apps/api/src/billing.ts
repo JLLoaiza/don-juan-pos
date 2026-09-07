@@ -86,6 +86,10 @@ export class BillingService {
       await this.outbox(client,actor,operationId,"accounts.configure_service","account",accountId,result); return result;
     });
   }
+  async paymentMethods(actor: BillingActor): Promise<{ paymentMethods: Array<{id:string;name:string;type:"CASH"|"CARD"|"QR";active:boolean}> }> {
+    const rows=(await this.pool.query<{id:string;name:string;type:"CASH"|"CARD"|"QR";active:boolean}>("SELECT id,name,type,active FROM payment_methods WHERE branch_id=$1 AND active ORDER BY name,id",[actor.branchId])).rows;
+    return {paymentMethods:rows};
+  }
   async cashRegisters(actor: BillingActor): Promise<{ cashRegisters: Array<{ id:string; name:string; active:boolean; openSession:CashSession|null }> }> {
     const rows=(await this.pool.query<any>(`SELECT cr.*,row_to_json(cs) open_session FROM cash_registers cr LEFT JOIN LATERAL (SELECT * FROM cash_sessions s WHERE s.cash_register_id=cr.id AND s.status='OPEN' ORDER BY s.opened_at DESC LIMIT 1) cs ON TRUE WHERE cr.branch_id=$1 ORDER BY cr.name`,[actor.branchId])).rows;
     return {cashRegisters:rows.map((row)=>({id:row.id,name:row.name,active:row.active,openSession:row.open_session?cashSessionSnapshot(row.open_session):null}))};

@@ -89,3 +89,12 @@ Rutas disponibles con `Authorization: Bearer` y sucursal derivada de la sesión:
 - `GET /cash-registers/:id/open-session` — permiso `cash.view`; devuelve la sesión `OPEN` de esa caja o `null`. Una caja de otra sucursal no se revela.
 
 Los contratos son `CashRegisterContextSchema` y `CashRegisterListSchema` en `@don-juan/contracts`. Claude ya puede completar las pantallas de ajustes y cierre usando la sesión incluida, y los comandos existentes `POST /cash-sessions/:id/adjustments` y `POST /cash-sessions/:id/close`; no debe enviar compañía ni sucursal.
+## Cierre backend — Fase 4
+
+Se añade `GET /payment-methods`, con permiso `payments.view`, que devuelve exclusivamente métodos activos de la sucursal autenticada: `{ paymentMethods: [{ id, name, type, active }] }`. No recibe ni expone compañía o sucursal.
+
+El seed de desarrollo `0020_development_cash_seed.sql` crea únicamente para la sucursal de desarrollo una `Caja Principal` y los métodos activos Efectivo/CASH, Tarjeta/CARD y QR/QR. Es idempotente y está marcado como datos de desarrollo: producción puede reemplazarlo o desactivarlo, sin depender de credenciales ni de esos IDs.
+
+Para cerrar ajustes y cierres, Claude debe cargar `GET /cash-registers` y seleccionar `openSession`; después usa `POST /cash-sessions/:id/adjustments` o `POST /cash-sessions/:id/close` con la `version` de esa sesión e `Idempotency-Key`. También puede cargar `GET /payment-methods` para el selector de cobro. Todas las rutas trabajan sobre la sucursal activa de la sesión.
+
+Verificación: typecheck API correcto y 30 pruebas HTTP correctas. La prueba PostgreSQL cubre cajas, sesión abierta, métodos activos y que una sucursal no pueda leer la caja ni métodos de otra; está lista para ejecutarse cuando Docker Desktop vuelva a estar disponible.
