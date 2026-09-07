@@ -1,11 +1,10 @@
 import { useMemo, useState } from "react";
 import { Button, EmptyState } from "@don-juan/ui";
-import type { CreateProductRequest, UpdateProductPriceRequest, UpdateProductRequest } from "@don-juan/contracts";
+import type { CreateProductRequest, UpdateProductRequest } from "@don-juan/contracts";
 import type { Accompaniment, CatalogApi, InventoryItem, Product } from "./catalogApi";
 import { formatMarginPercent, formatMoney } from "./format";
 import { hasPermission } from "./permissions";
 import { ProductForm } from "./ProductForm";
-import { ProductPriceForm } from "./ProductPriceForm";
 
 export interface ProductsSectionProps {
   readonly products: ReadonlyArray<Product>;
@@ -20,11 +19,9 @@ export function ProductsSection({ products, inventoryItems, accompaniments, perm
   const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [pricingId, setPricingId] = useState<string | null>(null);
 
   const canCreate = hasPermission(permissions, "products.create");
   const canUpdate = hasPermission(permissions, "products.update");
-  const canPrice = hasPermission(permissions, "pricing.update");
   const showCost = products.some((product) => product.calculatedCost !== null);
 
   const filtered = useMemo(() => {
@@ -34,7 +31,6 @@ export function ProductsSection({ products, inventoryItems, accompaniments, perm
   }, [products, search]);
 
   const editing = editingId ? products.find((product) => product.id === editingId) ?? null : null;
-  const pricing = pricingId ? products.find((product) => product.id === pricingId) ?? null : null;
 
   const handleCreate = (input: CreateProductRequest) =>
     api.createProduct(input).then(() => {
@@ -45,12 +41,6 @@ export function ProductsSection({ products, inventoryItems, accompaniments, perm
   const handleUpdate = (id: string, input: UpdateProductRequest) =>
     api.updateProduct(id, input).then(() => {
       setEditingId(null);
-      onChanged();
-    });
-
-  const handlePrice = (id: string, input: UpdateProductPriceRequest) =>
-    api.updateProductPrice(id, input).then(() => {
-      setPricingId(null);
       onChanged();
     });
 
@@ -90,9 +80,6 @@ export function ProductsSection({ products, inventoryItems, accompaniments, perm
           onCancel={() => setEditingId(null)}
         />
       ) : null}
-      {pricing ? (
-        <ProductPriceForm product={pricing} onSubmit={(input) => handlePrice(pricing.id, input)} onCancel={() => setPricingId(null)} />
-      ) : null}
 
       {filtered.length === 0 ? (
         <EmptyState
@@ -127,11 +114,6 @@ export function ProductsSection({ products, inventoryItems, accompaniments, perm
                   {canUpdate ? (
                     <button type="button" onClick={() => setEditingId(product.id)}>
                       Editar
-                    </button>
-                  ) : null}
-                  {canPrice ? (
-                    <button type="button" onClick={() => setPricingId(product.id)}>
-                      Precio
                     </button>
                   ) : null}
                 </td>

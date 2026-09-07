@@ -14,7 +14,6 @@ import {
   type CreateProductRequest,
   type UpdateAccompanimentRequest,
   type UpdateInventoryItemRequest,
-  type UpdateProductPriceRequest,
   type UpdateProductRequest,
 } from "@don-juan/contracts";
 import type { AuthContextValue } from "../auth/AuthProvider";
@@ -51,7 +50,6 @@ export interface CatalogApi {
   updateAccompaniment(id: string, input: UpdateAccompanimentRequest): Promise<Accompaniment>;
   createProduct(input: CreateProductRequest): Promise<Product>;
   updateProduct(id: string, input: UpdateProductRequest): Promise<Product>;
-  updateProductPrice(id: string, input: UpdateProductPriceRequest): Promise<Product>;
 }
 
 export function createCatalogApi(auth: AuthClient): CatalogApi {
@@ -70,7 +68,5 @@ export function createCatalogApi(auth: AuthClient): CatalogApi {
     createProduct: (input) => auth.authPost("/catalog/products", ProductSchema, input, idempotencyHeaders()),
     updateProduct: (id, input) =>
       auth.authPut(`/catalog/products/${id}`, ProductSchema, input, idempotencyHeaders()),
-    updateProductPrice: (id, input) =>
-      auth.authPost(`/catalog/products/${id}/price`, ProductSchema, input, idempotencyHeaders()),
   };
 }

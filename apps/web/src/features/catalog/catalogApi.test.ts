@@ -61,15 +61,4 @@ describe("createCatalogApi", () => {
     );
   });
 
-  it("updates product pricing with POST /catalog/products/:id/price (not PUT)", async () => {
-    const auth = fakeAuth();
-    await createCatalogApi(auth).updateProductPrice("product-1", { expectedVersion: 1, salePrice: "20.00" });
-    expect(auth.authPost).toHaveBeenCalledWith(
-      "/catalog/products/product-1/price",
-      expect.anything(),
-      { expectedVersion: 1, salePrice: "20.00" },
-      expect.objectContaining({ "idempotency-key": expect.any(String) }),
-    );
-    expect(auth.authPut).not.toHaveBeenCalled();
-  });
 });

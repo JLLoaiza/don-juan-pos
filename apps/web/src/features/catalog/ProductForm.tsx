@@ -7,6 +7,7 @@ import {
   type UpdateProductRequest,
 } from "@don-juan/contracts";
 import type { Accompaniment, InventoryItem, Product } from "./catalogApi";
+import { PriceFields } from "./PriceFields";
 import { ProductComponentsEditor, type ProductComponentValue } from "./ProductComponentsEditor";
 import { ProductAdditionalsEditor, type ProductAdditionalValue } from "./ProductAdditionalsEditor";
 
@@ -115,22 +116,6 @@ export function ProductForm(props: CreateModeProps | EditModeProps) {
       </label>
 
       <label className="dj-catalog-form__field">
-        <span>Precio de venta</span>
-        <input
-          inputMode="decimal"
-          value={salePrice}
-          onChange={(event) => setSalePrice(event.target.value)}
-          disabled={submitting}
-        />
-        {editing ? (
-          <small>
-            Para recalcular el precio a partir de margen o utilidad objetivo, usa la acción “Precio” en la lista de
-            productos.
-          </small>
-        ) : null}
-      </label>
-
-      <label className="dj-catalog-form__field">
         <span>Notas</span>
         <textarea value={notes} onChange={(event) => setNotes(event.target.value)} disabled={submitting} />
         {editing ? (
@@ -146,6 +131,15 @@ export function ProductForm(props: CreateModeProps | EditModeProps) {
         accompaniments={props.accompaniments}
         value={components}
         onChange={setComponents}
+        disabled={submitting}
+      />
+
+      <PriceFields
+        salePrice={salePrice}
+        onSalePriceChange={setSalePrice}
+        components={components}
+        inventoryItems={props.inventoryItems}
+        accompaniments={props.accompaniments}
         disabled={submitting}
       />
 
