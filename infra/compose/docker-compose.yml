@@ -21,7 +21,7 @@ services:
       dockerfile: infra/Dockerfile
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/app
-    command: pnpm migrate
+    command: node packages/database/dist/cli.js
     depends_on:
       postgres:
         condition: service_healthy
@@ -34,7 +34,8 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/app
       API_HOST: 0.0.0.0
       API_PORT: "3000"
-    command: pnpm dev:api
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+    command: node apps/api/dist/main.js
     ports:
       - "${HOST_API_PORT:-3000}:3000"
     depends_on:
@@ -49,13 +50,25 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/app
       WORKER_ID: compose-worker
       PRINT_SINK_DIRECTORY: /runtime/prints
-    command: pnpm dev:worker
+    command: node apps/worker/dist/main.js
     volumes:
       - don_juan_prints:/runtime/prints
     depends_on:
       migrate:
         condition: service_completed_successfully
 
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/Dockerfile
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000}
+    command: node apps/web/node_modules/vite/bin/vite.js apps/web --host 0.0.0.0
+    ports:
+      - "${HOST_WEB_PORT:-5173}:5173"
+    depends_on:
+      api:
+        condition: service_started
 volumes:
   don_juan_postgres:
   don_juan_prints:

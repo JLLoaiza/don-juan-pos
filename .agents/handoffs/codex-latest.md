@@ -47,3 +47,21 @@ Registradas en `.agents/coordination.md` para revisión de ChatGPT:
 ## Breaking changes
 
 Ninguno: no existían contratos ni clientes previos.
+
+## Actualización — Docker Compose y CORS
+
+- `infra/compose/docker-compose.yml` ahora levanta PostgreSQL, migración, API, worker y la PWA de Claude; PostgreSQL se expone por defecto en `5433`, API en `3000` y PWA en `5173`.
+- Se añadió `.dockerignore` para no enviar datos locales de PostgreSQL ni dependencias al build; las imágenes compilan una vez y se ejecutan sin invocar `pnpm` anidado.
+- La API permite únicamente los orígenes configurados en `CORS_ORIGINS` (por defecto `http://localhost:5173`) y prueba el preflight HTTP.
+- Verificación real: Compose build correcto; PostgreSQL healthy; migración exitosa; API `/health` 200; preflight CORS 204; PWA 200; worker activo.
+- Cambio backend confirmado: `b12631e feat(api): allow configured PWA origins`. Los cambios de Compose permanecen sin commit hasta que se confirme el trabajo frontend de Claude, pues la composición referencia `apps/web` y `packages/ui` aún no confirmados.
+## Actualización — Script de arranque
+
+- Se añadió `up.sh` en la raíz. Ejecuta Compose desde cualquier directorio, hace build por defecto, muestra el estado y las URLs; `./up.sh --no-build` omite la reconstrucción.
+- Validado con Git Bash contra el stack activo.
+- Commit: `60f94f8 chore(infra): add compose startup script`.
+## Actualización — Script PowerShell
+
+- Se añadió `up.ps1` en la raíz con los mismos controles que `up.sh`; admite `-NoBuild`.
+- Validado contra el stack activo.
+- Commit: `eb07fb0 chore(infra): add PowerShell startup script`.
