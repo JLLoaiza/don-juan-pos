@@ -73,3 +73,22 @@
   padding-left: var(--dj-space-3);
   border-left: 2px solid var(--dj-color-border);
 }
+
+.dj-billing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dj-space-4);
+  padding-top: var(--dj-space-3);
+  border-top: 1px solid var(--dj-color-border);
+}
+
+.dj-billing__block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dj-space-2);
+}
+
+.dj-billing__block-title {
+  margin: 0;
+  font-size: var(--dj-font-size-md);
+}

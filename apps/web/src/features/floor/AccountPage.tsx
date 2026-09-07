@@ -8,6 +8,8 @@ import { hasEveryPermission, hasPermission } from "../catalog/permissions";
 import { formatMoney, formatQuantity } from "../catalog/format";
 import { useCatalog } from "../catalog/useCatalog";
 import { useAccount } from "./useFloor";
+import { useBilling } from "./useBilling";
+import { BillingSection } from "./BillingSection";
 import { ConsumptionForm } from "./ConsumptionForm";
 import "./AccountPage.css";
 
@@ -26,6 +28,7 @@ export function AccountPage() {
   const { accountId } = useParams<{ accountId: string }>();
   const auth = useAuth();
   const { status, account, error, reload, api } = useAccount(accountId ?? "");
+  const billing = useBilling(accountId ?? "");
   const catalog = useCatalog();
   const [lastResult, setLastResult] = useState<ConfirmConsumptionResponse | null>(null);
   const permissions = auth.context?.permissions ?? [];
@@ -137,7 +140,17 @@ export function AccountPage() {
         </div>
       </dl>
 
-      {account.status === "OPEN" && canAddItems ? (
+      <BillingSection
+        billingResult={billing}
+        accountStatus={account.status}
+        permissions={permissions}
+        onChanged={() => {
+          billing.reload();
+          reload();
+        }}
+      />
+
+      {account.status === "OPEN" && billing.status === "ready" && !billing.billing?.hasPayments && canAddItems ? (
         catalog.status === "loading" ? (
           <LoadingState label="Cargando catálogo…" />
         ) : catalog.status === "error" || !catalog.snapshot ? (
