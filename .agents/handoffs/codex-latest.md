@@ -51,21 +51,24 @@ Todos requieren `Authorization: Bearer`; los comandos requieren `Idempotency-Key
 
 - `GET /accounts/:id/billing` — snapshot de liquidación, pagos registrados y saldo; permiso `payments.view`.
 - `POST /cash-sessions` — `{ cashRegisterId, openingAmount, notes? }`; permiso `cash.open`. Bloquea la caja y solo permite una sesión `OPEN` por caja.
+- `POST /accounts/:id/discounts` — `{ expectedVersion, name, type: PERCENTAGE|FIXED, value }`; permiso `sales.apply_discount`.
+- `PUT /accounts/:id/service` — `{ expectedVersion, percentage }`; permiso `sales.modify_service`.
 - `POST /accounts/:id/payments` — `{ expectedVersion, paymentMethodId, accountSplitId?, amountApplied, cashReceived?, cashSessionId?, reference?, notes?, printReceipt? }`; permiso `payments.create`.
 
 `RegisterPaymentRequest` solo cubre liquidación directa por ahora. Enviar `accountSplitId` recibe `422` hasta que se finalicen divisiones. Para CASH se exige una sesión abierta de la sede y `cashReceived >= amountApplied`; CARD/QR no modifican efectivo físico. Un pago CASH crea exactamente un movimiento `SALE` por el monto aplicado (no por el efectivo recibido), registra el cambio y, al saldar, marca la cuenta como `PAID` y libera su mesa.
 
-Los contratos completos siguen en `packages/contracts/src/billing.ts`, incluidos los contratos de descuentos, servicio, divisiones, cierre y ajustes de caja. Esos comandos todavía **no tienen rutas**: Claude puede mantenerlos como mocks, sin anticipar una API distinta.
+Descuentos y servicio ya tienen las rutas indicadas. Los contratos de divisiones, cierre y ajustes de caja siguen publicados en `packages/contracts/src/billing.ts`, pero esos comandos todavía **no tienen rutas**: Claude puede mantenerlos como mocks, sin anticipar una API distinta.
 
 ### Integridad aplicada
 
 - La migración `0016_payments_and_cash_integrity.sql` añade snapshots de método, sesión, efectivo/cambio y `operation_id`; valida en SQL que método, sesión, cuenta y split pertenezcan a la misma sede.
 - Pago y apertura de sesión son transacciones idempotentes con auditoría y transactional outbox. El cobro bloquea cuenta, método, pagos previos y sesión según corresponda; nunca usa un worker para confirmar dinero, cuenta o caja.
-- Todo pago, incluso parcial, incrementa la versión de cuenta. Un cliente debe recargar `GET /accounts/:id/billing` tras un `409 CONFLICT` antes de reintentar con una nueva clave.
+- Todo pago, descuento o cambio de servicio incrementa la versión de cuenta. Un cliente debe recargar `GET /accounts/:id/billing` tras un `409 CONFLICT` antes de reintentar con una nueva clave.
+- Los descuentos quedan como snapshots inmutables. Los totales, impuesto y servicio se recalculan con decimales desde los ítems confirmados y descuentos registrados; el descuento de cuenta se prorratea determinísticamente sin reescribir snapshots de consumo. Tras el primer pago se rechaza cualquier cambio comercial, incluido nuevo consumo.
 - `cash_movements` es inmutable y no admite inserciones en sesiones cerradas. Ausencia de impresora de recibos no revierte el cobro: persiste un `print_job` `FAILED` auditable; con impresora activa inicia `PENDING`.
 
 ### Verificación
 
 - Compilación de contratos y typecheck de API correctos.
-- API HTTP: 24 pruebas correctas; incluye validación de autenticación, idempotencia y eliminación de `companyId` en el comando de pago.
+- API HTTP: 25 pruebas correctas; incluye validación de autenticación, idempotencia, permisos de descuentos/servicio y eliminación de `companyId` en comandos de Fase 4.
 - Se añadió prueba PostgreSQL de apertura, pago efectivo, movimiento, cierre de cuenta, recibo, outbox y replay idempotente. Queda pendiente ejecutarla en el entorno local porque Docker Desktop no está iniciado.

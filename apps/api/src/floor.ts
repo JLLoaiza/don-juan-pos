@@ -4,6 +4,7 @@ import { addDecimals, compareDecimals, divideDecimals, multiplyDecimals, uuidv7 
 import { one, withTransaction } from "@don-juan/database";
 import type { Pool, PoolClient } from "pg";
 import { CatalogConflict, CatalogRuleViolation, type CatalogActor } from "./catalog.js";
+import { recalculateAccountTotals } from "./billing-totals.js";
 
 type CommandAction<T> = (client: PoolClient, companyId: string) => Promise<T>;
 type Ingredient = { inventoryItemId: string; quantity: string };
@@ -119,6 +120,8 @@ export class FloorService {
       if (!account) throw new CatalogRuleViolation("Account was not found in the current branch");
       if (account.status !== "OPEN") throw new CatalogRuleViolation("Only an open account can receive consumption");
       if (Number(account.version) !== input.expectedVersion) throw new CatalogConflict();
+      const paymentStarted = await one(client, "SELECT id FROM payments WHERE account_id=$1 AND status='REGISTERED' LIMIT 1 FOR SHARE", [accountId]);
+      if (paymentStarted) throw new CatalogRuleViolation("Consumption cannot change after the first payment");
 
       const resolved = [] as Array<{ input: ConfirmConsumptionRequest["items"][number]; product: ProductRow; ingredients: Ingredient[]; additionals: Array<{ id:string; name:string; unitPrice:string; noCharge:boolean }>; }>;
       const inventoryAmounts = new Map<string, string>();
@@ -177,10 +180,7 @@ export class FloorService {
           VALUES($1,$2,$3,'SALE',$4,$5,$6,$7,'ACCOUNT_CONSUMPTION',$8,NULL,'Confirmed account consumption',$9)`, [uuidv7(), actor.branchId, inventory.id, `-${consumed}`, inventory.unit_cost, inventory.current_stock, after, accountId, actor.userId]);
         if (compareDecimals(after, "0") < 0) warnings.push({ type: "NEGATIVE_STOCK", inventoryItemId: inventory.id, inventoryItemName: inventory.name, currentStock: after, unit: inventory.unit });
       }
-      const totals = await one<any>(client, `SELECT COALESCE(SUM(line_subtotal),0)::text subtotal,COALESCE(SUM(discount_total),0)::text discount_total,
-        COALESCE(SUM(tax_total),0)::text tax_total FROM account_items WHERE account_id=$1 AND status='CONFIRMED'`, [accountId]);
-      await client.query(`UPDATE accounts SET subtotal=$2,discount_total=$3,tax_total=$4,service_total=ROUND(($2::numeric-$3::numeric)*service_percentage/100,2),
-        total=ROUND(($2::numeric-$3::numeric)*service_percentage/100,2)+$2::numeric-$3::numeric+$4::numeric WHERE id=$1`, [accountId, totals?.subtotal ?? "0", totals?.discount_total ?? "0", totals?.tax_total ?? "0"]);
+      await recalculateAccountTotals(client,accountId);
       const ticketNumber = uuidv7();
       const kitchenContent = { accountId, tableId: account.table_id, items: createdItems.map((item) => ({ id: item.id, productName: item.product_name_snapshot, quantity: decimal(item.quantity), notes: item.notes })) };
       const kitchenOrder = await one<any>(client, `INSERT INTO kitchen_orders(id,branch_id,account_id,ticket_number,content,created_by_user_id)

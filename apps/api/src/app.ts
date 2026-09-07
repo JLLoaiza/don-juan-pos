@@ -1,5 +1,5 @@
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
-import { AdjustInventoryRequestSchema, AuthenticatedContextSchema, BillingSnapshotSchema, OpenCashSessionRequestSchema, RegisterPaymentRequestSchema, AuthContextSchema, ConfirmConsumptionRequestSchema, CreateDiningAreaRequestSchema, CreateAccompanimentRequestSchema, CreateInventoryItemRequestSchema, CreateProductRequestSchema, CreateRestaurantTableRequestSchema, HealthResponseSchema, LoginRequestSchema, OpenAccountRequestSchema, RefreshRequestSchema, SetActiveBranchRequestSchema, UuidSchema, UpdateAccompanimentRequestSchema, UpdateInventoryItemRequestSchema, UpdateProductPriceRequestSchema, UpdateProductRequestSchema, type HealthResponse } from "@don-juan/contracts";
+import { AdjustInventoryRequestSchema, ApplyAccountDiscountRequestSchema, AuthenticatedContextSchema, BillingSnapshotSchema, ConfigureServiceRequestSchema, OpenCashSessionRequestSchema, RegisterPaymentRequestSchema, AuthContextSchema, ConfirmConsumptionRequestSchema, CreateDiningAreaRequestSchema, CreateAccompanimentRequestSchema, CreateInventoryItemRequestSchema, CreateProductRequestSchema, CreateRestaurantTableRequestSchema, HealthResponseSchema, LoginRequestSchema, OpenAccountRequestSchema, RefreshRequestSchema, SetActiveBranchRequestSchema, UuidSchema, UpdateAccompanimentRequestSchema, UpdateInventoryItemRequestSchema, UpdateProductPriceRequestSchema, UpdateProductRequestSchema, type HealthResponse } from "@don-juan/contracts";
 import type { DatabaseHealth } from "@don-juan/database";
 import { AccessDenied, AuthFailure, type AuthService } from "./auth.js";
 import { CatalogConflict, CatalogRuleViolation, type CatalogActor, type CatalogService } from "./catalog.js";
@@ -40,6 +40,8 @@ export function buildApi({ database, auth, catalog, floor, billing, clock = () =
   }
   if(auth&&billing){
     app.get("/accounts/:id/billing",async request=>BillingSnapshotSchema.parse(await billing.billing(await floorActor(auth,request,["payments.view"]),UuidSchema.parse((request.params as {id?:string}).id))));
+    app.post("/accounts/:id/discounts",async request=>BillingSnapshotSchema.parse(await billing.applyAccountDiscount(await floorActor(auth,request,["sales.apply_discount"]),operationId(request),UuidSchema.parse((request.params as {id?:string}).id),ApplyAccountDiscountRequestSchema.parse(request.body))));
+    app.put("/accounts/:id/service",async request=>BillingSnapshotSchema.parse(await billing.configureService(await floorActor(auth,request,["sales.modify_service"]),operationId(request),UuidSchema.parse((request.params as {id?:string}).id),ConfigureServiceRequestSchema.parse(request.body))));
     app.post("/accounts/:id/payments",async request=>billing.registerPayment(await floorActor(auth,request,["payments.create"]),operationId(request),UuidSchema.parse((request.params as {id?:string}).id),RegisterPaymentRequestSchema.parse(request.body)));
     app.post("/cash-sessions",async request=>billing.openCashSession(await floorActor(auth,request,["cash.open"]),operationId(request),OpenCashSessionRequestSchema.parse(request.body)));
   }  return app;

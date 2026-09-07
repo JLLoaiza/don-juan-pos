@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
-import type { BillingSnapshot, CashSession, OpenCashSessionRequest, PaymentSnapshot, RegisterPaymentRequest } from "@don-juan/contracts";
-import { addDecimals, compareDecimals, subtractDecimals, uuidv7 } from "@don-juan/domain";
+import type { ApplyAccountDiscountRequest, BillingSnapshot, CashSession, ConfigureServiceRequest, OpenCashSessionRequest, PaymentSnapshot, RegisterPaymentRequest } from "@don-juan/contracts";
+import { addDecimals, compareDecimals, divideDecimals, multiplyDecimals, subtractDecimals, uuidv7 } from "@don-juan/domain";
 import { one, withTransaction } from "@don-juan/database";
 import type { Pool, PoolClient } from "pg";
 import { CatalogConflict, CatalogRuleViolation, type CatalogActor } from "./catalog.js";
+import { recalculateAccountTotals } from "./billing-totals.js";
 
 export interface BillingActor extends CatalogActor {}
 type CommandAction<T> = (client: PoolClient, companyId: string) => Promise<T>;
@@ -36,14 +37,55 @@ export class BillingService {
   private async audit(client:PoolClient,actor:BillingActor,companyId:string,action:string,entityType:string,entityId:string,before:unknown,after:unknown){await client.query("INSERT INTO audit_logs(company_id,branch_id,user_id,action,entity_type,entity_id,before_data,after_data) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",[companyId,actor.branchId,actor.userId,action,entityType,entityId,before,after]);}
   private async outbox(client:PoolClient,actor:BillingActor,operationId:string,name:string,type:string,id:string,payload:unknown){await client.query("INSERT INTO sync_outbox(branch_id,operation_id,command_name,aggregate_type,aggregate_id,payload) VALUES($1,$2,$3,$4,$5,$6)",[actor.branchId,operationId,name,type,id,payload]);}
 
-  async billing(actor: BillingActor, accountId: string): Promise<BillingSnapshot> {
-    const account=await one<any>(this.pool,"SELECT * FROM accounts WHERE id=$1 AND branch_id=$2",[accountId,actor.branchId]);
+  private async billingSnapshot(queryable: Pool | PoolClient, accountId: string, branchId: string): Promise<BillingSnapshot> {
+    const account=await one<any>(queryable,"SELECT * FROM accounts WHERE id=$1 AND branch_id=$2",[accountId,branchId]);
     if(!account) throw new CatalogRuleViolation("Account was not found in the current branch");
-    const payments=(await this.pool.query<any>(`SELECT p.*,pm.name method_name,pm.type method_type FROM payments p LEFT JOIN payment_methods pm ON pm.id=p.payment_method_id WHERE p.account_id=$1 ORDER BY p.received_at,p.id`,[accountId])).rows;
+    const payments=(await queryable.query<any>(`SELECT p.*,pm.name method_name,pm.type method_type FROM payments p LEFT JOIN payment_methods pm ON pm.id=p.payment_method_id WHERE p.account_id=$1 ORDER BY p.received_at,p.id`,[accountId])).rows;
+    const discounts=(await queryable.query<any>("SELECT * FROM account_discounts WHERE account_id=$1 ORDER BY created_at,id",[accountId])).rows;
     const paid=payments.filter((p)=>p.status==="REGISTERED").reduce((sum,p)=>addDecimals(sum,decimal(p.amount)),"0");
-    return {accountId,status:account.status,version:Number(account.version),settlementMode:account.settlement_mode,subtotal:decimal(account.subtotal),discountTotal:decimal(account.discount_total),taxTotal:decimal(account.tax_total),servicePercentage:decimal(account.service_percentage),serviceTotal:decimal(account.service_total),total:decimal(account.total),paidTotal:paid,remainingBalance:compareDecimals(decimal(account.total),paid)<0?"0":subtractDecimals(decimal(account.total),paid),hasPayments:payments.some((p)=>p.status==="REGISTERED"),discounts:[],splits:[],payments:payments.map(paymentSnapshot)};
+    return {accountId,status:account.status,version:Number(account.version),settlementMode:account.settlement_mode,subtotal:decimal(account.subtotal),discountTotal:decimal(account.discount_total),taxTotal:decimal(account.tax_total),servicePercentage:decimal(account.service_percentage),serviceTotal:decimal(account.service_total),total:decimal(account.total),paidTotal:paid,remainingBalance:compareDecimals(decimal(account.total),paid)<0?"0":subtractDecimals(decimal(account.total),paid),hasPayments:payments.some((p)=>p.status==="REGISTERED"),discounts:discounts.map((discount)=>({id:discount.id,name:discount.name_snapshot,type:discount.discount_type,value:decimal(discount.value),appliedAmount:decimal(discount.applied_amount),createdAt:instant(discount.created_at)})),splits:[],payments:payments.map(paymentSnapshot)};
   }
 
+  async billing(actor: BillingActor, accountId: string): Promise<BillingSnapshot> { return this.billingSnapshot(this.pool,accountId,actor.branchId); }
+
+  private async lockedCommercialAccount(client: PoolClient, actor: BillingActor, accountId: string, expectedVersion: number): Promise<any> {
+    const account=await one<any>(client,"SELECT * FROM accounts WHERE id=$1 AND branch_id=$2 FOR UPDATE",[accountId,actor.branchId]);
+    if(!account) throw new CatalogRuleViolation("Account was not found in the current branch");
+    if(account.status!=="OPEN") throw new CatalogRuleViolation("Only an open account can be modified");
+    if(Number(account.version)!==expectedVersion) throw new CatalogConflict();
+    if(account.settlement_mode!=="DIRECT") throw new CatalogRuleViolation("Commercial changes for split settlement are not available yet");
+    const payment=await one(client,"SELECT id FROM payments WHERE account_id=$1 AND status='REGISTERED' LIMIT 1 FOR SHARE",[accountId]);
+    if(payment) throw new CatalogRuleViolation("Commercial changes are not allowed after the first payment");
+    return account;
+  }
+
+  async applyAccountDiscount(actor: BillingActor, operationId: string, accountId: string, input: ApplyAccountDiscountRequest): Promise<BillingSnapshot> {
+    return this.command(actor,operationId,"accounts.apply_discount",{accountId,...input},async(client,companyId)=>{
+      const account=await this.lockedCommercialAccount(client,actor,accountId,input.expectedVersion);
+      const items=(await client.query<{line_subtotal:string;discount_total:string}>("SELECT line_subtotal,discount_total FROM account_items WHERE account_id=$1 AND status='CONFIRMED' ORDER BY id FOR SHARE",[accountId])).rows;
+      const existing=(await one<{applied:string}>(client,"SELECT COALESCE(SUM(applied_amount),0)::text applied FROM account_discounts WHERE account_id=$1",[accountId]))?.applied??"0";
+      const itemNet=items.reduce((sum,item)=>addDecimals(sum,subtractDecimals(decimal(item.line_subtotal),decimal(item.discount_total))),"0");
+      const available=subtractDecimals(itemNet,existing);
+      const applied=input.type==="PERCENTAGE"?divideDecimals(multiplyDecimals(available,input.value),"100",2):input.value;
+      if(compareDecimals(applied,available)>0) throw new CatalogRuleViolation("Discount amount exceeds the account commercial subtotal");
+      const id=uuidv7(); const discount=await one<any>(client,"INSERT INTO account_discounts(id,account_id,name_snapshot,discount_type,value,applied_amount,created_by_user_id) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *",[id,accountId,input.name,input.type,input.value,applied,actor.userId]);
+      if(!discount) throw new Error("Account discount insert did not return a row");
+      await recalculateAccountTotals(client,accountId);
+      const result=await this.billingSnapshot(client,accountId,actor.branchId);
+      await this.audit(client,actor,companyId,"account.discount_applied","account_discount",id,{accountVersion:Number(account.version)},{discount:{id,name:input.name,type:input.type,value:input.value,appliedAmount:applied},billing:result});
+      await this.outbox(client,actor,operationId,"accounts.apply_discount","account",accountId,result); return result;
+    });
+  }
+
+  async configureService(actor: BillingActor, operationId: string, accountId: string, input: ConfigureServiceRequest): Promise<BillingSnapshot> {
+    return this.command(actor,operationId,"accounts.configure_service",{accountId,...input},async(client,companyId)=>{
+      const account=await this.lockedCommercialAccount(client,actor,accountId,input.expectedVersion);
+      await recalculateAccountTotals(client,accountId,input.percentage);
+      const result=await this.billingSnapshot(client,accountId,actor.branchId);
+      await this.audit(client,actor,companyId,"account.service_configured","account",accountId,{accountVersion:Number(account.version),servicePercentage:decimal(account.service_percentage)},{servicePercentage:input.percentage,billing:result});
+      await this.outbox(client,actor,operationId,"accounts.configure_service","account",accountId,result); return result;
+    });
+  }
   async openCashSession(actor: BillingActor, operationId: string, input: OpenCashSessionRequest): Promise<CashSession> {
     return this.command(actor,operationId,"cash_sessions.open",input,async(client,companyId)=>{
       const register=await one<{id:string}>(client,"SELECT id FROM cash_registers WHERE id=$1 AND branch_id=$2 AND active FOR UPDATE",[input.cashRegisterId,actor.branchId]);
