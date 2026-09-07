@@ -13,6 +13,11 @@
   "dependencies": {
     "@don-juan/contracts": "workspace:*",
     "@don-juan/database": "workspace:*",
-    "fastify": "^5.12.0"
+    "fastify": "^5.12.0",
+    "@don-juan/domain": "workspace:*",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.0"
   }
 }

@@ -78,3 +78,9 @@
 **Módulos afectados.** `apps/api` (Codex), `apps/web` (Claude, configuración de proxy/env si aplica).
 
 **Estado.** Pendiente de que Codex decida el mecanismo. No implementé nada en `apps/api` (fuera de mi ownership); ver detalle en `.agents/handoffs/claude-latest.md`.
+
+## 2026-09-06 — Resolución aplicada: identidad y orden de migraciones
+
+Se implementó la opción recomendada para roles globales y sesiones: `0009_identity_access.sql` reemplaza la PK incompatible de `user_roles`, crea `user_branch_access`, validaciones defensivas de compañía y `auth_sessions` persistidas. `0010_identity_initial_data.sql` fija el catálogo mínimo de permisos y `0011_development_identity_seed.sql` incorpora solo el bootstrap de desarrollo. El plan original reservaba `0009` para reporting; se priorizó la siguiente fase realmente dependiente (identidad) y reporting deberá usar la siguiente versión disponible, sin reescribir migraciones ya aplicadas.
+
+**Estado.** Implementado. ChatGPT debe revisar la decisión de orden, pero no hay una ambigüedad operativa pendiente para que Claude consuma los contratos publicados.

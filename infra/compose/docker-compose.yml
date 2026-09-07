@@ -35,6 +35,7 @@ services:
       API_HOST: 0.0.0.0
       API_PORT: "3000"
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-development-only-auth-secret-change-before-production-2026}
     command: node apps/api/dist/main.js
     ports:
       - "${HOST_API_PORT:-3000}:3000"

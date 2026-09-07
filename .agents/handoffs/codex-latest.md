@@ -1,67 +1,48 @@
 # Handoff — Codex
 
-## Tarea realizada
+## Fase 1 — identidad y contexto de sucursal
 
-Completada la Fase 0: monorepo TypeScript ejecutable, migrador PostgreSQL con checksum y bloqueo asesor, API de salud, worker de impresión persistente de desarrollo y Compose local.
+Implementada y verificada contra PostgreSQL mediante Compose.
 
-## Archivos principales
+### Contratos ya disponibles para Claude
 
-- `apps/api/`: `GET /health` y prueba HTTP.
-- `apps/worker/`: reclamación de `print_jobs` con `FOR UPDATE SKIP LOCKED`, backoff y adaptador a archivo para desarrollo.
-- `packages/contracts/`: contrato público de salud y error API base.
-- `packages/domain/`: generador UUIDv7 para comandos/entidades sincronizables.
-- `packages/database/`: pool, transacciones, migrador, CLI y pruebas.
-- `infra/db/migrations/`: `0001`, `0002`, `0003`, `0007` y `0008`.
-- `infra/compose/docker-compose.yml` y `infra/Dockerfile`.
+Desde `@don-juan/contracts`:
 
-## Contratos
+- `POST /auth/login` recibe `{ companyId, username, password }` y devuelve `AuthenticatedContext`.
+- `POST /auth/refresh` recibe `{ refreshToken }` y devuelve un `AuthenticatedContext` con refresh rotado.
+- `GET /me/context` requiere `Authorization: Bearer <accessToken>` y devuelve `AuthContext`.
+- `POST /me/active-branch` requiere el mismo bearer y recibe `{ branchId }`; devuelve el contexto recalculado.
 
-Solo está publicado `GET /health`. Aún no hay contratos de auth, salón, cuentas ni consumo; no crear mocks frontend que inventen esas rutas. Los contratos de cuenta/consumo quedan pendientes de las decisiones de coordinación antes de la Fase 1/3.
+`AuthContext` expone `user`, `company`, `branches`, `activeBranch` (puede ser `null` cuando hay más de una sucursal y ninguna seleccionada) y `permissions` como lista plana. Cada sucursal incluye su `settings` JSON.
 
-## Migraciones
+### Semántica de seguridad
 
-La base local vacía fue inicializada con el DDL original y las cinco migraciones. El migrador conserva `0000_initial_ddl` y checksums en `schema_migrations`, rechaza una base existente no baselined y evita carreras con `pg_advisory_lock`.
+- Access token JWT HMAC de 15 minutos; refresh opaco, hasheado, persistido y rotado en transacción.
+- Cada endpoint protegido vuelve a comprobar sesión, compañía/usuario activos, sucursal accesible y permisos actuales desde PostgreSQL. Desactivar usuario/compañía o revocar una sucursal toma efecto inmediatamente.
+- Los roles globales (`branch_id = NULL`) aplican únicamente dentro de las sucursales presentes en `user_branch_access`; roles y accesos entre compañías se rechazan también por triggers SQL.
 
-## Decisiones y coordinación requerida
+### Datos de desarrollo
 
-Registradas en `.agents/coordination.md` para revisión de ChatGPT:
+Compose deja un acceso de desarrollo:
 
-1. roles globales y `user_branch_access`;
-2. estrategia de sesión/refresh y seed temprano;
-3. trabajos sin impresora y obligatoriedad de `expectedVersion`;
-4. registro canónico de idempotencia para comandos online.
+- companyId: `00000000-0000-7000-8000-000000000001`
+- username: `admin`
+- password: `ChangeMe!123`
 
-## Pruebas ejecutadas
+Es exclusivamente bootstrap local. Producción debe proporcionar `AUTH_JWT_SECRET` seguro y reemplazar/desactivar ese usuario tras aprovisionamiento.
 
-- Compilación TypeScript limpia: correcta.
-- Vitest: 7 pruebas correctas; 1 integración PostgreSQL omitida sin `DATABASE_URL_TEST`.
-- PostgreSQL local: DDL+migraciones aplicados correctamente; segunda ejecución idempotente (`Database is current`).
-- Verificado índice parcial de cuenta abierta, `printers` y `sync_outbox`.
+### Cambios de migración
 
-## Pendiente
+- `0009_identity_access.sql`: rol global, acceso a sucursal y sesión revocable.
+- `0010_identity_initial_data.sql`: catálogo inicial de permisos.
+- `0011_development_identity_seed.sql`: empresa/sucursal/admin de desarrollo, separado para conservar inmutables las migraciones ya aplicadas.
 
-- Fase 1 de identidad después de resolver las decisiones de coordinación.
-- Contratos command-oriented de auth/context, salón, cuenta y consumo antes de que Claude implemente los clientes/mocks.
-- Pruebas de integración PostgreSQL con `DATABASE_URL_TEST` apuntando a una base vacía desechable.
+### Verificación
 
-## Breaking changes
+- `pnpm build` correcto.
+- `pnpm test` correcto: 56 pruebas; 2 de integración PostgreSQL se omiten si no se provee `DATABASE_URL_TEST`.
+- Compose reconstruido y migrado. Smoke test real `login → /me/context` correcto (Centro, 9 permisos).
 
-Ninguno: no existían contratos ni clientes previos.
+### Próximo backend
 
-## Actualización — Docker Compose y CORS
-
-- `infra/compose/docker-compose.yml` ahora levanta PostgreSQL, migración, API, worker y la PWA de Claude; PostgreSQL se expone por defecto en `5433`, API en `3000` y PWA en `5173`.
-- Se añadió `.dockerignore` para no enviar datos locales de PostgreSQL ni dependencias al build; las imágenes compilan una vez y se ejecutan sin invocar `pnpm` anidado.
-- La API permite únicamente los orígenes configurados en `CORS_ORIGINS` (por defecto `http://localhost:5173`) y prueba el preflight HTTP.
-- Verificación real: Compose build correcto; PostgreSQL healthy; migración exitosa; API `/health` 200; preflight CORS 204; PWA 200; worker activo.
-- Cambio backend confirmado: `b12631e feat(api): allow configured PWA origins`. Los cambios de Compose permanecen sin commit hasta que se confirme el trabajo frontend de Claude, pues la composición referencia `apps/web` y `packages/ui` aún no confirmados.
-## Actualización — Script de arranque
-
-- Se añadió `up.sh` en la raíz. Ejecuta Compose desde cualquier directorio, hace build por defecto, muestra el estado y las URLs; `./up.sh --no-build` omite la reconstrucción.
-- Validado con Git Bash contra el stack activo.
-- Commit: `60f94f8 chore(infra): add compose startup script`.
-## Actualización — Script PowerShell
-
-- Se añadió `up.ps1` en la raíz con los mismos controles que `up.sh`; admite `-NoBuild`.
-- Validado contra el stack activo.
-- Commit: `eb07fb0 chore(infra): add PowerShell startup script`.
+Fase 2: catálogo e inventario base, empezando por contratos antes de persistencia. Claude ya puede avanzar con login/contexto/selector de sucursal contra las rutas reales o mocks con estos esquemas.
