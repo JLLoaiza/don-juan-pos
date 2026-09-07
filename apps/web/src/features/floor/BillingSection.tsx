@@ -1,12 +1,14 @@
 import { useState } from "react";
-import { EmptyState, ErrorState, LoadingState } from "@don-juan/ui";
+import { Banner, EmptyState, ErrorState, LoadingState } from "@don-juan/ui";
 import { Button } from "@don-juan/ui";
-import type { BillingSnapshot } from "@don-juan/contracts";
+import type { PaymentSnapshot } from "@don-juan/contracts";
 import { formatMoney, formatQuantity } from "../catalog/format";
 import { hasPermission } from "../catalog/permissions";
+import type { UseCashRegistersResult } from "../cash/useCashRegisters";
 import type { BillingApi } from "./billingApi";
 import { DiscountForm } from "./DiscountForm";
 import { ServiceForm } from "./ServiceForm";
+import { PaymentForm } from "./PaymentForm";
 import type { UseBillingResult } from "./useBilling";
 
 const PAYMENT_METHOD_LABEL: Record<string, string> = { CASH: "Efectivo", CARD: "Tarjeta", QR: "QR" };
@@ -14,6 +16,7 @@ const DISCOUNT_TYPE_LABEL: Record<string, string> = { PERCENTAGE: "Porcentaje", 
 
 export interface BillingSectionProps {
   readonly billingResult: UseBillingResult;
+  readonly cashRegistersResult: UseCashRegistersResult;
   readonly accountStatus: string;
   readonly permissions: ReadonlyArray<string>;
   readonly onChanged: () => void;
@@ -35,10 +38,12 @@ function configureService(api: BillingApi, accountId: string, input: Parameters<
   return api.configureService(accountId, input);
 }
 
-export function BillingSection({ billingResult, accountStatus, permissions, onChanged }: BillingSectionProps) {
+export function BillingSection({ billingResult, cashRegistersResult, accountStatus, permissions, onChanged }: BillingSectionProps) {
   const { status, billing, error, api, reload } = billingResult;
   const [showDiscountForm, setShowDiscountForm] = useState(false);
   const [showServiceForm, setShowServiceForm] = useState(false);
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [lastPayment, setLastPayment] = useState<PaymentSnapshot | null>(null);
 
   const canApplyDiscount = hasPermission(permissions, "sales.apply_discount");
   const canModifyService = hasPermission(permissions, "sales.modify_service");
@@ -66,6 +71,8 @@ export function BillingSection({ billingResult, accountStatus, permissions, onCh
       setShowServiceForm(false);
       onChanged();
     });
+
+  const handleRegisterPayment = (input: Parameters<BillingApi["registerPayment"]>[1]) => api.registerPayment(accountId, input);
 
   return (
     <section className="dj-billing" aria-labelledby="billing-title">
@@ -110,7 +117,12 @@ export function BillingSection({ billingResult, accountStatus, permissions, onCh
         )}
         {canModifyCommercials && canApplyDiscount ? (
           showDiscountForm ? (
-            <DiscountForm expectedVersion={billing.version} onSubmit={handleApplyDiscount} onCancel={() => setShowDiscountForm(false)} />
+            <DiscountForm
+            expectedVersion={billing.version}
+            onSubmit={handleApplyDiscount}
+            onCancel={() => setShowDiscountForm(false)}
+            onConflict={reload}
+          />
           ) : (
             <Button variant="secondary" onClick={() => setShowDiscountForm(true)}>
               Aplicar descuento
@@ -128,6 +140,7 @@ export function BillingSection({ billingResult, accountStatus, permissions, onCh
               currentPercentage={billing.servicePercentage}
               onSubmit={handleConfigureService}
               onCancel={() => setShowServiceForm(false)}
+              onConflict={reload}
             />
           ) : (
             <Button variant="secondary" onClick={() => setShowServiceForm(true)}>
@@ -167,12 +180,34 @@ export function BillingSection({ billingResult, accountStatus, permissions, onCh
             </tbody>
           </table>
         )}
+        {lastPayment ? (
+          <Banner
+            tone="info"
+            title="Pago registrado"
+            {...(lastPayment.cashReceived !== null
+              ? { description: `Recibido ${formatMoney(lastPayment.cashReceived)} · Cambio ${formatMoney(lastPayment.changeAmount)}` }
+              : {})}
+          />
+        ) : null}
         {canRegisterPayment && Number(billing.remainingBalance) > 0 && accountStatus === "OPEN" ? (
-          <p className="dj-catalog-form__hint">
-            Registrar un pago nuevo todavía no está disponible aquí: el backend no publica un listado de métodos de
-            pago activos de la sucursal, así que no hay forma de ofrecer ese selector sin inventar datos. Queda
-            pendiente de que se publique ese endpoint.
-          </p>
+          showPaymentForm ? (
+            <PaymentForm
+              expectedVersion={billing.version}
+              remainingBalance={billing.remainingBalance}
+              billingApi={api}
+              cashRegistersResult={cashRegistersResult}
+              onSubmit={handleRegisterPayment}
+              onSubmitted={(result) => {
+                setLastPayment(result);
+                setShowPaymentForm(false);
+                onChanged();
+              }}
+              onCancel={() => setShowPaymentForm(false)}
+              onConflict={reload}
+            />
+          ) : (
+            <Button onClick={() => setShowPaymentForm(true)}>Registrar pago</Button>
+          )
         ) : null}
       </div>
     </section>

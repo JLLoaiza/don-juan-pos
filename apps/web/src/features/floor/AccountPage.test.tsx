@@ -125,13 +125,47 @@ function renderAccountPage(auth: AuthContextValue, accountId = "acc-1") {
   );
 }
 
-function routedAuthGet(routes: { account: AccountSnapshot; catalog?: CatalogSnapshot; billing?: BillingSnapshot }) {
+const PAYMENT_METHODS = [
+  { id: "33333333-3333-7333-8333-333333333333", name: "Efectivo", type: "CASH" as const, active: true },
+  { id: "44444444-4444-7444-8444-444444444444", name: "Tarjeta", type: "CARD" as const, active: true },
+];
+
+const OPEN_SESSION = {
+  id: "55555555-5555-7555-8555-555555555555",
+  cashRegisterId: "66666666-6666-7666-8666-666666666666",
+  status: "OPEN" as const,
+  openingAmount: "100000.00",
+  expectedCash: null,
+  countedCash: null,
+  difference: null,
+  openedByUserId: "u1",
+  openedAt: "2026-09-07T11:00:00.000Z",
+  closedAt: null,
+  version: 1,
+};
+
+const CASH_REGISTER_WITH_SESSION = {
+  id: "66666666-6666-7666-8666-666666666666",
+  name: "Caja Principal",
+  active: true,
+  openSession: OPEN_SESSION,
+};
+
+function routedAuthGet(routes: {
+  account: AccountSnapshot;
+  catalog?: CatalogSnapshot;
+  billing?: BillingSnapshot;
+  paymentMethods?: typeof PAYMENT_METHODS;
+  cashRegisters?: Array<typeof CASH_REGISTER_WITH_SESSION>;
+}) {
   return vi.fn(async (path: string) => {
     if (path.endsWith("/billing")) {
       return routes.billing ?? billingSnapshot({ accountId: routes.account.id, version: routes.account.version });
     }
     if (path.startsWith("/accounts/")) return routes.account;
     if (path === "/catalog") return routes.catalog ?? catalogSnapshot();
+    if (path === "/payment-methods") return { paymentMethods: routes.paymentMethods ?? PAYMENT_METHODS };
+    if (path === "/cash-registers") return { cashRegisters: routes.cashRegisters ?? [] };
     throw new Error(`Unexpected path ${path}`);
   });
 }
@@ -299,22 +333,120 @@ describe("AccountPage", () => {
     expect(screen.queryByText("Agregar consumo")).not.toBeInTheDocument();
   });
 
-  it("shows the payment-registration blocker note only with payments.create, remaining balance, and no way to invent a payment-method picker", async () => {
+  it("shows the register-payment action only with payments.create and a remaining balance", async () => {
     const authGet = routedAuthGet({ account: account() });
+    const { unmount } = renderAccountPage(
+      makeAuth({ authGet: authGet as unknown as AuthContextValue["authGet"], context: baseContext({ permissions: ["payments.create"] }) }),
+    );
+    expect(await screen.findByRole("button", { name: "Registrar pago" })).toBeInTheDocument();
+    unmount();
+
+    const authGetNoPerm = routedAuthGet({ account: account() });
+    renderAccountPage(makeAuth({ authGet: authGetNoPerm as unknown as AuthContextValue["authGet"], context: baseContext({ permissions: [] }) }));
+    await screen.findByText("Cobro");
+    expect(screen.queryByRole("button", { name: "Registrar pago" })).not.toBeInTheDocument();
+  });
+
+  it("registers a card payment end-to-end (no cash fields) and shows the confirmation banner", async () => {
+    const authGet = routedAuthGet({ account: account() });
+    const authPost = vi.fn().mockImplementation(async (path: string) => {
+      if (path === "/accounts/acc-1/payments") {
+        return {
+          id: "pay-1",
+          accountId: "acc-1",
+          accountSplitId: null,
+          paymentMethodId: PAYMENT_METHODS[1]!.id,
+          paymentMethodName: "Tarjeta",
+          paymentMethodType: "CARD",
+          status: "REGISTERED",
+          amountApplied: "27500.00",
+          cashReceived: null,
+          changeAmount: "0.00",
+          reference: null,
+          notes: null,
+          cashSessionId: null,
+          receivedByUserId: "u1",
+          receivedAt: "2026-09-07T14:00:00.000Z",
+        };
+      }
+      return billingSnapshot();
+    });
     renderAccountPage(
       makeAuth({
         authGet: authGet as unknown as AuthContextValue["authGet"],
+        authPost: authPost as unknown as AuthContextValue["authPost"],
         context: baseContext({ permissions: ["payments.create"] }),
       }),
     );
-    expect(await screen.findByText(/no publica un listado de métodos de pago/)).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Registrar pago" }));
+    const methodSelect = await screen.findByLabelText("Método de pago");
+    fireEvent.change(methodSelect, { target: { value: PAYMENT_METHODS[1]!.id } });
+    fireEvent.click(screen.getByRole("button", { name: "Registrar pago" }));
+
+    await waitFor(() => expect(authPost).toHaveBeenCalledWith("/accounts/acc-1/payments", expect.anything(), expect.anything(), expect.anything()));
+    const paymentCall = authPost.mock.calls.find((call) => call[0] === "/accounts/acc-1/payments");
+    expect(paymentCall?.[2]).toMatchObject({ expectedVersion: 3, paymentMethodId: PAYMENT_METHODS[1]!.id, amountApplied: "27500.00" });
+    expect(paymentCall?.[2]).not.toHaveProperty("cashReceived");
+    expect(await screen.findByText("Pago registrado")).toBeInTheDocument();
   });
 
-  it("does not show the payment-registration blocker note without payments.create", async () => {
-    const authGet = routedAuthGet({ account: account() });
-    renderAccountPage(makeAuth({ authGet: authGet as unknown as AuthContextValue["authGet"], context: baseContext({ permissions: [] }) }));
-    await screen.findByText("Cobro");
-    expect(screen.queryByText(/no publica un listado de métodos de pago/)).not.toBeInTheDocument();
+  it("requires an open cash session to submit a cash payment", async () => {
+    const authGet = routedAuthGet({ account: account(), cashRegisters: [] });
+    renderAccountPage(
+      makeAuth({ authGet: authGet as unknown as AuthContextValue["authGet"], context: baseContext({ permissions: ["payments.create"] }) }),
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Registrar pago" }));
+    expect(await screen.findByText("No hay ninguna caja abierta")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Registrar pago" })).toBeDisabled();
+  });
+
+  it("registers a cash payment against the open session and shows the change", async () => {
+    const authGet = routedAuthGet({ account: account(), cashRegisters: [CASH_REGISTER_WITH_SESSION] });
+    const authPost = vi.fn().mockImplementation(async (path: string) => {
+      if (path === "/accounts/acc-1/payments") {
+        return {
+          id: "pay-2",
+          accountId: "acc-1",
+          accountSplitId: null,
+          paymentMethodId: PAYMENT_METHODS[0]!.id,
+          paymentMethodName: "Efectivo",
+          paymentMethodType: "CASH",
+          status: "REGISTERED",
+          amountApplied: "27500.00",
+          cashReceived: "30000.00",
+          changeAmount: "2500.00",
+          reference: null,
+          notes: null,
+          cashSessionId: OPEN_SESSION.id,
+          receivedByUserId: "u1",
+          receivedAt: "2026-09-07T14:00:00.000Z",
+        };
+      }
+      return billingSnapshot();
+    });
+    renderAccountPage(
+      makeAuth({
+        authGet: authGet as unknown as AuthContextValue["authGet"],
+        authPost: authPost as unknown as AuthContextValue["authPost"],
+        context: baseContext({ permissions: ["payments.create"] }),
+      }),
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Registrar pago" }));
+    await screen.findByLabelText("Caja");
+    fireEvent.change(screen.getByLabelText("Caja"), { target: { value: OPEN_SESSION.id } });
+    fireEvent.change(screen.getByLabelText("Efectivo recibido"), { target: { value: "30000" } });
+    fireEvent.click(screen.getByRole("button", { name: "Registrar pago" }));
+
+    const paymentCall = await vi.waitFor(() => {
+      const call = authPost.mock.calls.find((entry) => entry[0] === "/accounts/acc-1/payments");
+      if (!call) throw new Error("not called yet");
+      return call;
+    });
+    expect(paymentCall[2]).toMatchObject({ paymentMethodId: PAYMENT_METHODS[0]!.id, cashReceived: "30000", cashSessionId: OPEN_SESSION.id });
+    expect(await screen.findByText(/Cambio 2500/)).toBeInTheDocument();
   });
 
   it("lists payments already registered on the account", async () => {

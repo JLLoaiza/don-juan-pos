@@ -2,21 +2,18 @@ import { useState, type FormEvent } from "react";
 import { Banner, Button } from "@don-juan/ui";
 import { ApplyAccountDiscountRequestSchema, type ApplyAccountDiscountRequest, type DiscountTypeSchema } from "@don-juan/contracts";
 import type { z } from "zod";
+import { commandErrorMessage, isConflict } from "../shared/commandErrorMessage";
 
 type DiscountType = z.infer<typeof DiscountTypeSchema>;
-
-function apiErrorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : null;
-  return message && message.length > 0 ? message : "No se pudo aplicar el descuento. Intenta de nuevo.";
-}
 
 export interface DiscountFormProps {
   readonly expectedVersion: number;
   readonly onSubmit: (input: ApplyAccountDiscountRequest) => Promise<unknown>;
   readonly onCancel: () => void;
+  readonly onConflict?: () => void;
 }
 
-export function DiscountForm({ expectedVersion, onSubmit, onCancel }: DiscountFormProps) {
+export function DiscountForm({ expectedVersion, onSubmit, onCancel, onConflict }: DiscountFormProps) {
   const [name, setName] = useState("");
   const [type, setType] = useState<DiscountType>("PERCENTAGE");
   const [value, setValue] = useState("");
@@ -35,8 +32,9 @@ export function DiscountForm({ expectedVersion, onSubmit, onCancel }: DiscountFo
     }
     setSubmitting(true);
     onSubmit(parsed.data).catch((cause: unknown) => {
-      setError(apiErrorMessage(cause));
+      setError(commandErrorMessage(cause, "No se pudo aplicar el descuento. Intenta de nuevo."));
       setSubmitting(false);
+      if (isConflict(cause)) onConflict?.();
     });
   };
 

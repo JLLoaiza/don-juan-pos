@@ -37,4 +37,27 @@ describe("createBillingApi", () => {
       expect.objectContaining({ "idempotency-key": expect.any(String) }),
     );
   });
+
+  it("fetches active payment methods with GET /payment-methods and unwraps the envelope", async () => {
+    const auth = {
+      authGet: vi.fn(async () => ({ paymentMethods: [{ id: "pm-1", name: "Efectivo", type: "CASH", active: true }] })),
+      authPost: vi.fn(async () => ({}) as never),
+      authPut: vi.fn(async () => ({}) as never),
+    } as unknown as ReturnType<typeof fakeAuth>;
+    const result = await createBillingApi(auth).getPaymentMethods();
+    expect(auth.authGet).toHaveBeenCalledWith("/payment-methods", expect.anything());
+    expect(result).toEqual([{ id: "pm-1", name: "Efectivo", type: "CASH", active: true }]);
+  });
+
+  it("registers a payment with POST /accounts/:id/payments and an Idempotency-Key header", async () => {
+    const auth = fakeAuth();
+    const input = { expectedVersion: 1, paymentMethodId: "pm-1", amountApplied: "500", printReceipt: true };
+    await createBillingApi(auth).registerPayment("account-1", input);
+    expect(auth.authPost).toHaveBeenCalledWith(
+      "/accounts/account-1/payments",
+      expect.anything(),
+      input,
+      expect.objectContaining({ "idempotency-key": expect.any(String) }),
+    );
+  });
 });

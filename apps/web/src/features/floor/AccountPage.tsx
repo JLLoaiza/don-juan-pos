@@ -7,6 +7,7 @@ import { useAuth } from "../auth/useAuth";
 import { hasEveryPermission, hasPermission } from "../catalog/permissions";
 import { formatMoney, formatQuantity } from "../catalog/format";
 import { useCatalog } from "../catalog/useCatalog";
+import { useCashRegisters } from "../cash/useCashRegisters";
 import { useAccount } from "./useFloor";
 import { useBilling } from "./useBilling";
 import { BillingSection } from "./BillingSection";
@@ -29,6 +30,7 @@ export function AccountPage() {
   const auth = useAuth();
   const { status, account, error, reload, api } = useAccount(accountId ?? "");
   const billing = useBilling(accountId ?? "");
+  const cashRegisters = useCashRegisters();
   const catalog = useCatalog();
   const [lastResult, setLastResult] = useState<ConfirmConsumptionResponse | null>(null);
   const permissions = auth.context?.permissions ?? [];
@@ -142,6 +144,7 @@ export function AccountPage() {
 
       <BillingSection
         billingResult={billing}
+        cashRegistersResult={cashRegisters}
         accountStatus={account.status}
         permissions={permissions}
         onChanged={() => {

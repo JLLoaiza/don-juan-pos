@@ -1,20 +1,17 @@
 import { useState, type FormEvent } from "react";
 import { Banner, Button } from "@don-juan/ui";
 import { ConfigureServiceRequestSchema, type ConfigureServiceRequest } from "@don-juan/contracts";
-
-function apiErrorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : null;
-  return message && message.length > 0 ? message : "No se pudo actualizar el servicio. Intenta de nuevo.";
-}
+import { commandErrorMessage, isConflict } from "../shared/commandErrorMessage";
 
 export interface ServiceFormProps {
   readonly expectedVersion: number;
   readonly currentPercentage: string;
   readonly onSubmit: (input: ConfigureServiceRequest) => Promise<unknown>;
   readonly onCancel: () => void;
+  readonly onConflict?: () => void;
 }
 
-export function ServiceForm({ expectedVersion, currentPercentage, onSubmit, onCancel }: ServiceFormProps) {
+export function ServiceForm({ expectedVersion, currentPercentage, onSubmit, onCancel, onConflict }: ServiceFormProps) {
   const [percentage, setPercentage] = useState(currentPercentage);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,8 +28,9 @@ export function ServiceForm({ expectedVersion, currentPercentage, onSubmit, onCa
     }
     setSubmitting(true);
     onSubmit(parsed.data).catch((cause: unknown) => {
-      setError(apiErrorMessage(cause));
+      setError(commandErrorMessage(cause, "No se pudo actualizar el servicio. Intenta de nuevo."));
       setSubmitting(false);
+      if (isConflict(cause)) onConflict?.();
     });
   };
 

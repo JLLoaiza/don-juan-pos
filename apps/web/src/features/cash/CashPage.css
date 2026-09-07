@@ -1,0 +1,40 @@
+.dj-cash {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dj-space-5);
+}
+
+.dj-cash__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+  gap: var(--dj-space-4);
+  align-items: start;
+}
+
+.dj-cash-register {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dj-space-3);
+  padding: var(--dj-space-4);
+  background: var(--dj-color-surface);
+  border: 1px solid var(--dj-color-border);
+  border-radius: var(--dj-radius-md);
+}
+
+.dj-cash-register__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dj-space-2);
+}
+
+.dj-cash-register__header h2 {
+  margin: 0;
+  font-size: var(--dj-font-size-md);
+}
+
+.dj-cash-register__session {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dj-space-2);
+}
