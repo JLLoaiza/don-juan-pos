@@ -1,9 +1,11 @@
 import { z } from "zod";
-import { NonNegativeDecimalStringSchema, PositiveDecimalStringSchema } from "./catalog.js";
+import { DecimalStringSchema, NonNegativeDecimalStringSchema, PositiveDecimalStringSchema } from "./catalog.js";
 
 const EntityIdSchema = z.string().uuid();
 const MoneySchema = NonNegativeDecimalStringSchema;
 const PositiveMoneySchema = PositiveDecimalStringSchema;
+/** Signed: a cash-count difference (countedCash - expectedCash) can be negative (short) or positive (over). */
+const SignedMoneySchema = DecimalStringSchema;
 const PositiveVersionSchema = z.number().int().positive();
 const NotesSchema = z.string().max(10_000).nullable().optional();
 
@@ -47,7 +49,7 @@ export const RegisterPaymentRequestSchema = z.object({
 });
 export const CashRegisterSchema = z.object({ id: EntityIdSchema, name: z.string(), active: z.boolean() });
 export const CashSessionSchema = z.object({
-  id: EntityIdSchema, cashRegisterId: EntityIdSchema, status: CashSessionStatusSchema, openingAmount: MoneySchema, expectedCash: MoneySchema.nullable(), countedCash: MoneySchema.nullable(), difference: MoneySchema.nullable(),
+  id: EntityIdSchema, cashRegisterId: EntityIdSchema, status: CashSessionStatusSchema, openingAmount: MoneySchema, expectedCash: MoneySchema.nullable(), countedCash: MoneySchema.nullable(), difference: SignedMoneySchema.nullable(),
   openedByUserId: EntityIdSchema, openedAt: z.string().datetime(), closedAt: z.string().datetime().nullable(), version: PositiveVersionSchema,
 });
 export const OpenCashSessionRequestSchema = z.object({ cashRegisterId: EntityIdSchema, openingAmount: MoneySchema, notes: NotesSchema });
