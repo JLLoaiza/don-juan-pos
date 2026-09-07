@@ -24,3 +24,7 @@ Estados usados: `PENDING` (no iniciado), `PARTIAL` (avance parcial, ver handoff)
 ## Nota backend — corrección de contexto (2026-09-07)
 
 Fase 1 sigue `COMPLETE`. El contrato público dejó de requerir/exponer compañía: login por credenciales y selección exclusiva de `branch_id`; la compañía se deriva internamente desde sesión y usuario. Ver `.agents/handoffs/codex-latest.md`.
+
+## Nota frontend — adaptado al contrato corregido (2026-09-07)
+
+`apps/web` ya no pide ni envía `companyId` en ningún punto (formulario, estado, tipos, tests). Una sola sucursal entra automáticamente; varias sucursales muestran el selector con `activeBranch: null` hasta elegir. Sin selección de compañía en ninguna pantalla. Ver `.agents/handoffs/claude-latest.md`.
