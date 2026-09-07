@@ -62,3 +62,19 @@
 **Módulos afectados.** Migraciones, `packages/database`, `packages/domain`, `apps/api`, `apps/worker`, sincronización y pruebas de reintento.
 
 **Estado.** Pendiente de revisión de ChatGPT. No se creará la tabla hasta acordar el modelo; la migración base de sync no se usa aún para comandos HTTP.
+
+## 2026-09-06 — CORS bloquea al frontend contra la API real desde el navegador
+
+**Problema.** `apps/web` (Vite, `http://localhost:5173` en desarrollo) ya consume `GET /health` con un cliente HTTP real. Verificado en vivo contra `apps/api` corriendo localmente: el navegador bloquea la respuesta (`No 'Access-Control-Allow-Origin' header is present`) aunque `curl`/Node reciben 200 sin problema, porque `apps/api` no envía cabeceras CORS. El frontend maneja el fallo con gracia (muestra el estado de error de red con reintento), pero ningún flujo real podrá verificarse en navegador —ni ahora con `/health` ni después con auth/salón/cuentas— hasta resolver esto.
+
+**Opciones.**
+
+1. Habilitar CORS en `apps/api` solo para los orígenes de desarrollo del frontend (p. ej. `http://localhost:5173`), vía config/env, deshabilitado o restringido en producción.
+2. Servir `apps/web` y `apps/api` bajo el mismo origen en desarrollo (proxy de Vite hacia la API), evitando CORS por completo.
+3. No hacer nada y depender de que cada agente pruebe por separado (curl/Postman para backend, mocks para frontend). Retrasa cualquier prueba end-to-end real en navegador.
+
+**Recomendación.** Combinar 1 (CORS explícito por entorno, nunca `*` en producción) y 2 (proxy de Vite en desarrollo para evitar exponer CORS más allá de lo necesario). Es una decisión pequeña pero cruza ambos ownership (`apps/api` de Codex, `apps/web` de Claude) y afecta cómo se probarán todos los vertical slices futuros en navegador.
+
+**Módulos afectados.** `apps/api` (Codex), `apps/web` (Claude, configuración de proxy/env si aplica).
+
+**Estado.** Pendiente de que Codex decida el mecanismo. No implementé nada en `apps/api` (fuera de mi ownership); ver detalle en `.agents/handoffs/claude-latest.md`.
