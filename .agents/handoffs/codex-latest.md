@@ -1,42 +1,42 @@
 # Handoff — Codex
 
-## Fase 2 — catálogo e inventario base
+## Fase 3 — salón, mesas, cuentas y consumo
 
-Completada para backend. No se avanzó a salón, cuentas ni consumo.
+Backend completado. La sucursal se deriva exclusivamente de la sesión autenticada: ningún endpoint acepta `company_id` ni `branch_id` del cliente.
 
 ### Contratos y endpoints disponibles
 
-Todas las rutas requieren `Authorization: Bearer` y obtienen la sucursal desde la sesión; no aceptan `company_id` ni `branch_id` del cliente.
+Todos requieren `Authorization: Bearer`. Los comandos mutantes requieren `Idempotency-Key` UUID.
 
-- `GET /catalog`: inventario, acompañamientos y productos de la sede activa. Costos se ocultan (`null`) sin `inventory.view_cost` y `products.view_cost`.
-- `GET /catalog/inventory-movements`: Kardex de la sede; requiere `inventory.view_movements` y oculta costo sin `inventory.view_cost`.
-- `POST /catalog/inventory-items`, `PUT /catalog/inventory-items/:id`, `POST /catalog/inventory-items/:id/adjust`.
-- `POST`/`PUT /catalog/accompaniments`.
-- `POST`/`PUT /catalog/products` y `POST /catalog/products/:id/price`.
+- `GET /floor` — áreas y mesas activas de la sede, con `openAccountId` si existe.
+- `POST /dining-areas` — `{ name }`; permiso `dining_areas.create`.
+- `POST /restaurant-tables` — `{ diningAreaId, name, capacity, status? }`; permiso `tables.create`. No permite crear una mesa como `OCCUPIED`.
+- `POST /accounts` — `{ tableId, customerId?, notes? }`; permiso `accounts.open`. Bloquea la mesa, admite `AVAILABLE` o `RESERVED`, y la deja `OCCUPIED`.
+- `GET /accounts/:id` — snapshot histórico de cuenta; permiso `accounts.view`.
+- `POST /accounts/:id/confirm-consumption` — `{ expectedVersion, items: [{ productId, quantity, selectedAdditionals, notes? }] }`; requiere `accounts.update`, `sales.add_items` y `kitchen.send`.
 
-Todo comando mutante requiere `Idempotency-Key` UUID. Los payloads y esquemas están en `@don-juan/contracts` (`catalog.ts`). Las cantidades y montos viajan como strings decimales, no `number`.
+Los schemas Zod y tipos están en `packages/contracts/src/floor.ts`, exportados por `@don-juan/contracts`.
 
-### Reglas implementadas
+### Reglas para Claude
 
-- Un único servicio transaccional cambia stock: bloquea `inventory_items` con `FOR UPDATE`, escribe Kardex/auditoría y actualiza stock en el mismo commit. Stock negativo se permite y se reporta como `NEGATIVE_STOCK`.
-- Kardex es inmutable en SQL y verifica `stock_after = stock_before + quantity`.
-- Recetas tienen un solo nivel: productos usan inventario y/o acompañamientos; acompañamientos solo inventario. Triggers SQL y validación de aplicación impiden cruces de sucursal.
-- Costos derivados se recalculan sincrónicamente al crear/editar receta o subreceta. El precio de venta no cambia al recalcular costo.
-- Edición de precio acepta exactamente uno de `salePrice`, `targetProfit` o `targetMarginPercent`; margen de 100% o más se rechaza.
-- Reintentos con el mismo `Idempotency-Key` devuelven el resultado almacenado; reutilizarlo para otro comando/payload da conflicto.
+- El frontend solo selecciona `branch_id` mediante `POST /me/active-branch`; no mostrar, guardar ni enviar compañía.
+- Mantener un UUID por cada intento de comando y reenviarlo como `Idempotency-Key` ante reintentos.
+- `confirm-consumption` exige la `version` de la cuenta leída. Un `409 CONFLICT` significa recargar la cuenta antes de volver a confirmar.
+- `quantity` es string entero positivo. El cliente solo expresa intención: no manda precio, costo, impuesto, total ni receta.
+- `selectedAdditionals[].noCharge` solo funciona si el producto permite el adicional gratuito; incluso gratuito descuenta inventario.
+- La respuesta de confirmación contiene la cuenta actualizada, ticket de cocina, print job y alertas `NEGATIVE_STOCK`. No bloquear la venta por alerta de stock.
 
-### Para Claude
+### Integridad aplicada
 
-Puede implementar el catálogo contra los contratos ya publicados. No envíe costo calculado, compañía ni sede en el body. Para mutaciones genere y conserve un UUID como `Idempotency-Key`; para editar use `expectedVersion` de la respuesta. `active: false` se envía en los `PUT` administrativos.
-
-Compras y cambios de costo por compra continúan deliberadamente en Fase 5; no existe una edición genérica de `unit_cost` en esta fase.
+- Las operaciones mutantes usan ledger idempotente por compañía interna + `operation_id` y validan acceso efectivo a la sucursal.
+- Abrir cuenta bloquea la mesa (`FOR UPDATE`) y conserva el índice SQL de una única cuenta `OPEN` por mesa.
+- Confirmar consumo bloquea cuenta y todas las existencias afectadas en orden determinista. En el mismo commit crea los snapshots de ítems/adicionales, descuenta inventario, registra Kardex inmutable, recalcula totales, genera orden de cocina, print job, auditoría y transactional outbox.
+- Precios, impuestos, costo y receta se resuelven en backend. Las recetas y montos de inventario quedan en `consumptionSnapshot`; el SQL impide reescribir snapshots de ítems confirmados.
+- Sin impresora de cocina activa el consumo sigue siendo válido: el print job se persiste como `FAILED` con motivo explícito y el worker puede reintentarlo cuando exista destino. Con impresora activa inicia `PENDING`.
+- Las migraciones `0013`–`0015` agregan permisos y defensas SQL de aislamiento por sede/snapshots. `0014`–`0015` corrigen de forma compatible el trigger compartido ya aplicado; no reescriben historial de migración.
 
 ### Verificación
 
-- `pnpm test`: 120 pruebas correctas.
-- Integración PostgreSQL: auth y catálogo, 7 pruebas correctas, incluyendo Kardex inmutable, reintento idempotente, costo derivado, aislamiento de sede y conflicto concurrente.
-- Compose: `POST /auth/login` y `GET /catalog` comprobados en vivo.
-
-### Migración
-
-`0012_catalog_integrity_and_commands.sql` añade ledger de comandos, verificación de Kardex, triggers defensivos de receta por sede, unidad inmutable tras movimiento y permisos canónicos de catálogo.
+- API HTTP: 20 pruebas correctas.
+- Integración PostgreSQL: flujo área → mesa → cuenta → consumo → Kardex → cocina → print job → outbox correcto, incluido replay idempotente.
+- Typecheck de contratos y API correcto.

@@ -1,14 +1,16 @@
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
-import { AdjustInventoryRequestSchema, AuthenticatedContextSchema, AuthContextSchema, CreateAccompanimentRequestSchema, CreateInventoryItemRequestSchema, CreateProductRequestSchema, HealthResponseSchema, LoginRequestSchema, RefreshRequestSchema, SetActiveBranchRequestSchema, UuidSchema, UpdateAccompanimentRequestSchema, UpdateInventoryItemRequestSchema, UpdateProductPriceRequestSchema, UpdateProductRequestSchema, type HealthResponse } from "@don-juan/contracts";
+import { AdjustInventoryRequestSchema, AuthenticatedContextSchema, AuthContextSchema, ConfirmConsumptionRequestSchema, CreateDiningAreaRequestSchema, CreateAccompanimentRequestSchema, CreateInventoryItemRequestSchema, CreateProductRequestSchema, CreateRestaurantTableRequestSchema, HealthResponseSchema, LoginRequestSchema, OpenAccountRequestSchema, RefreshRequestSchema, SetActiveBranchRequestSchema, UuidSchema, UpdateAccompanimentRequestSchema, UpdateInventoryItemRequestSchema, UpdateProductPriceRequestSchema, UpdateProductRequestSchema, type HealthResponse } from "@don-juan/contracts";
 import type { DatabaseHealth } from "@don-juan/database";
 import { AccessDenied, AuthFailure, type AuthService } from "./auth.js";
 import { CatalogConflict, CatalogRuleViolation, type CatalogActor, type CatalogService } from "./catalog.js";
+import { FloorService, type FloorActor } from "./floor.js";
 
-export interface ApiDependencies { readonly database: DatabaseHealth; readonly auth?: AuthService; readonly catalog?: CatalogService; readonly clock?: () => Date; readonly corsOrigins?: readonly string[]; }
+export interface ApiDependencies { readonly database: DatabaseHealth; readonly auth?: AuthService; readonly catalog?: CatalogService; readonly floor?: FloorService; readonly clock?: () => Date; readonly corsOrigins?: readonly string[]; }
 function bearer(value: string | undefined): string { if (!value?.startsWith("Bearer ")) throw new AuthFailure(); return value.slice(7); }
 function operationId(request: FastifyRequest): string { return UuidSchema.parse(typeof request.headers["idempotency-key"] === "string" ? request.headers["idempotency-key"] : ""); }
 async function catalogActor(auth: AuthService, request: FastifyRequest, permission: string): Promise<CatalogActor> { const context=await auth.context(bearer(request.headers.authorization)); if(!context.activeBranch) throw new AccessDenied("Select an active branch first"); if(!context.permissions.includes(permission)) throw new AccessDenied(`Permission ${permission} is required`); return {userId:context.user.id,branchId:context.activeBranch.id}; }
-export function buildApi({ database, auth, catalog, clock = () => new Date(), corsOrigins = ["http://localhost:5173"] }: ApiDependencies): FastifyInstance {
+async function floorActor(auth: AuthService, request: FastifyRequest, permissions: readonly string[]): Promise<FloorActor> { const context=await auth.context(bearer(request.headers.authorization)); if(!context.activeBranch) throw new AccessDenied("Select an active branch first"); for(const permission of permissions)if(!context.permissions.includes(permission)) throw new AccessDenied(`Permission ${permission} is required`); return {userId:context.user.id,branchId:context.activeBranch.id}; }
+export function buildApi({ database, auth, catalog, floor, clock = () => new Date(), corsOrigins = ["http://localhost:5173"] }: ApiDependencies): FastifyInstance {
   const app = Fastify({ logger: false });
   app.addHook("onRequest", async (request, reply) => { const origin=request.headers.origin; if(!origin||!corsOrigins.includes(origin))return; reply.header("Access-Control-Allow-Origin",origin);reply.header("Access-Control-Allow-Credentials","true");reply.header("Access-Control-Allow-Methods","GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS");reply.header("Access-Control-Allow-Headers","Authorization,Content-Type,Idempotency-Key");reply.header("Vary","Origin");if(request.method==="OPTIONS")return reply.code(204).send(); });
   app.setErrorHandler((error, _request, reply) => { if(error instanceof AuthFailure)return reply.code(401).send({code:"UNAUTHENTICATED",message:"Authentication is required"}); if(error instanceof AccessDenied)return reply.code(403).send({code:"FORBIDDEN",message:error.message}); if(error instanceof CatalogConflict)return reply.code(409).send({code:"CONFLICT",message:error.message}); if(error instanceof CatalogRuleViolation)return reply.code(422).send({code:"VALIDATION_ERROR",message:error.message}); if(typeof error==="object"&&error!==null&&"issues" in error)return reply.code(400).send({code:"VALIDATION_ERROR",message:"Invalid request"}); return reply.code(500).send({code:"INTERNAL_ERROR",message:"Unexpected server error"}); });
@@ -26,5 +28,12 @@ export function buildApi({ database, auth, catalog, clock = () => new Date(), co
     app.put("/catalog/products/:id",async request=>catalog.updateProduct(await catalogActor(auth,request,"products.update"),operationId(request),UuidSchema.parse((request.params as {id?:string}).id),UpdateProductRequestSchema.parse(request.body)));
     app.post("/catalog/products/:id/price",async request=>catalog.updateProductPrice(await catalogActor(auth,request,"pricing.update"),operationId(request),UuidSchema.parse((request.params as {id?:string}).id),UpdateProductPriceRequestSchema.parse(request.body)));
   }
-  return app;
+  if(auth&&floor){
+    app.get("/floor",async request=>floor.floor(await floorActor(auth,request,["dining_areas.view","tables.view"])));
+    app.post("/dining-areas",async request=>floor.createDiningArea(await floorActor(auth,request,["dining_areas.create"]),operationId(request),CreateDiningAreaRequestSchema.parse(request.body)));
+    app.post("/restaurant-tables",async request=>floor.createRestaurantTable(await floorActor(auth,request,["tables.create"]),operationId(request),CreateRestaurantTableRequestSchema.parse(request.body)));
+    app.get("/accounts/:id",async request=>floor.account(await floorActor(auth,request,["accounts.view"]),UuidSchema.parse((request.params as {id?:string}).id)));
+    app.post("/accounts",async request=>floor.openAccount(await floorActor(auth,request,["accounts.open"]),operationId(request),OpenAccountRequestSchema.parse(request.body)));
+    app.post("/accounts/:id/confirm-consumption",async request=>floor.confirmConsumption(await floorActor(auth,request,["accounts.update","sales.add_items","kitchen.send"]),operationId(request),UuidSchema.parse((request.params as {id?:string}).id),ConfirmConsumptionRequestSchema.parse(request.body)));
+  }  return app;
 }
