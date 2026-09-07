@@ -1,9 +1,22 @@
-# Progreso de implementación
+# Progreso del proyecto Don Juan POS/ERP
 
-| Fase | Estado | Evidencia |
-| --- | --- | --- |
-| 0 — Base ejecutable | Completa | Compose, migrador, API de salud y worker verificados. |
-| 1 — Identidad y contexto de sucursal | Completa | Contratos auth, sesiones revocables/rotadas, permisos efectivos, migraciones 0009–0011 y smoke test real. |
-| 2 — Catálogo e inventario | Pendiente | Siguiente vertical backend. |
+Tabla de estado por fase y agente. Cada agente actualiza únicamente su propia columna al terminar una ejecución. La columna `Integrado` está reservada al proceso de integración/revisión (ChatGPT) — ningún otro agente debe marcarla `YES`.
 
-Última actualización: 2026-09-06.
+Estados usados: `PENDING` (no iniciado), `PARTIAL` (avance parcial, ver handoff), `COMPLETE` (terminado y probado), `N/A` (no aplica a este agente).
+
+| Fase | Alcance | Backend (Codex) | Frontend (Claude) | Integrado |
+| --- | --- | --- | --- | --- |
+| Fase 0 | Workspace, migrador, salud de API, worker de impresión | COMPLETE | N/A | - |
+| Fase 1 | Identidad, sesión, contexto de sucursal y permisos | COMPLETE | COMPLETE (login, refresh, selector de sucursal, logout local, snapshot offline de auth) | - |
+| Fase 2 | Catálogo e inventario base | PENDING | PENDING (placeholder en `/catalog`) | - |
+| Fase 3 | Salón: áreas, mesas, cuentas, consumo | PENDING | PENDING (placeholder en `/floor`) | - |
+| Fase 4 | Cobro: descuentos, servicio, divisiones, pagos, caja | PENDING | PENDING (placeholders en `/billing`, `/cash`) | - |
+| Fase 5 | Compras, gastos, Kardex, empleados | PENDING | PENDING (placeholders en `/procurement`, `/workforce`) | - |
+| Fase 6 | Sincronización Edge completa (outbox, pull, conflictos) | PENDING | PARTIAL (conectividad ONLINE/DEVICE_ONLY real; sin cola de comandos aún — ver `/sync`) | - |
+| Fase 7 | Reportes y operación a escala | PENDING | PENDING (placeholder en `/reports`) | - |
+
+## Notas de la fase actual (Fase 1, frontend)
+
+- Contratos consumidos: `POST /auth/login`, `POST /auth/refresh`, `GET /me/context`, `POST /me/active-branch` (todos de `@don-juan/contracts`, ya publicados por Codex).
+- Verificado en vivo contra la API real (Compose) con el usuario de desarrollo (`admin` / sucursal única "Don Juan Centro"): login, persistencia de sesión tras recarga, selector de sucursal (solo texto para 1 sucursal), logout, manejo de 401/red.
+- Detalle completo en `.agents/handoffs/claude-latest.md`.
