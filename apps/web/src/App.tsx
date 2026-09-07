@@ -1,5 +1,7 @@
 import { Route, Routes } from "react-router-dom";
 import { AppShell } from "./app-shell/AppShell";
+import { LoginPage } from "./features/auth/LoginPage";
+import { RequireAuth } from "./features/auth/RequireAuth";
 import { HomePage } from "./features/auth/HomePage";
 import { FloorPage } from "./features/floor/FloorPage";
 import { CatalogPage } from "./features/catalog/CatalogPage";
@@ -15,18 +17,21 @@ import { NotFoundPage } from "./features/shared/NotFoundPage";
 export function App() {
   return (
     <Routes>
-      <Route element={<AppShell />}>
-        <Route index element={<HomePage />} />
-        <Route path="floor" element={<FloorPage />} />
-        <Route path="catalog" element={<CatalogPage />} />
-        <Route path="kitchen" element={<KitchenPage />} />
-        <Route path="billing" element={<BillingPage />} />
-        <Route path="cash" element={<CashPage />} />
-        <Route path="procurement" element={<ProcurementPage />} />
-        <Route path="workforce" element={<WorkforcePage />} />
-        <Route path="reports" element={<ReportsPage />} />
-        <Route path="sync" element={<SyncPage />} />
-        <Route path="*" element={<NotFoundPage />} />
+      <Route path="login" element={<LoginPage />} />
+      <Route element={<RequireAuth />}>
+        <Route element={<AppShell />}>
+          <Route index element={<HomePage />} />
+          <Route path="floor" element={<FloorPage />} />
+          <Route path="catalog" element={<CatalogPage />} />
+          <Route path="kitchen" element={<KitchenPage />} />
+          <Route path="billing" element={<BillingPage />} />
+          <Route path="cash" element={<CashPage />} />
+          <Route path="procurement" element={<ProcurementPage />} />
+          <Route path="workforce" element={<WorkforcePage />} />
+          <Route path="reports" element={<ReportsPage />} />
+          <Route path="sync" element={<SyncPage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
       </Route>
     </Routes>
   );
