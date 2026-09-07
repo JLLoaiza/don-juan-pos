@@ -76,3 +76,16 @@ Descuentos y servicio ya tienen las rutas indicadas. Los contratos de divisiones
 Actualización: POST /cash-sessions/:id/adjustments recibe { expectedVersion, amount, direction: INCREASE|DECREASE, reason } con cash.adjust; POST /cash-sessions/:id/close recibe { expectedVersion, countedCash, notes?, printReceipt? } con cash.close. Ambos usan Idempotency-Key; el cierre bloquea la sesión, calcula efectivo esperado desde movimientos y persiste snapshot inmutable.
 
 Actualización de cierre: cuando printReceipt es verdadero, el cierre crea un print_job DAY_CLOSE con el snapshot persistido. Sin impresora CASH activa queda FAILED con causa explícita, sin revertir la sesión cerrada.
+
+## Pausa segura — Fase 5
+
+Fase 5 queda pausada por instrucción del usuario y no debe retomarse hasta integración de Fase 4. El commit `d30ca23` publicó solamente contratos iniciales de proveedores, compras y gastos. La migración local no confirmada `infra/db/migrations/0019_procurement_integrity.sql` conserva el avance SQL de aislamiento por sucursal, permisos y `operation_id`; no está mezclada con este corte de Fase 4 ni debe eliminarse.
+
+## Actualización Fase 4 — lectura de caja para frontend
+
+Rutas disponibles con `Authorization: Bearer` y sucursal derivada de la sesión:
+
+- `GET /cash-registers` — permiso `cash.view`; devuelve las cajas de la sucursal activa y `openSession` (o `null`) por cada una.
+- `GET /cash-registers/:id/open-session` — permiso `cash.view`; devuelve la sesión `OPEN` de esa caja o `null`. Una caja de otra sucursal no se revela.
+
+Los contratos son `CashRegisterContextSchema` y `CashRegisterListSchema` en `@don-juan/contracts`. Claude ya puede completar las pantallas de ajustes y cierre usando la sesión incluida, y los comandos existentes `POST /cash-sessions/:id/adjustments` y `POST /cash-sessions/:id/close`; no debe enviar compañía ni sucursal.

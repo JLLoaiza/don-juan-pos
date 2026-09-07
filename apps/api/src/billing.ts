@@ -86,6 +86,14 @@ export class BillingService {
       await this.outbox(client,actor,operationId,"accounts.configure_service","account",accountId,result); return result;
     });
   }
+  async cashRegisters(actor: BillingActor): Promise<{ cashRegisters: Array<{ id:string; name:string; active:boolean; openSession:CashSession|null }> }> {
+    const rows=(await this.pool.query<any>(`SELECT cr.*,row_to_json(cs) open_session FROM cash_registers cr LEFT JOIN LATERAL (SELECT * FROM cash_sessions s WHERE s.cash_register_id=cr.id AND s.status='OPEN' ORDER BY s.opened_at DESC LIMIT 1) cs ON TRUE WHERE cr.branch_id=$1 ORDER BY cr.name`,[actor.branchId])).rows;
+    return {cashRegisters:rows.map((row)=>({id:row.id,name:row.name,active:row.active,openSession:row.open_session?cashSessionSnapshot(row.open_session):null}))};
+  }
+  async openCashSessionForRegister(actor: BillingActor, cashRegisterId: string): Promise<CashSession|null> {
+    const row=await one<any>(this.pool,`SELECT cs.* FROM cash_sessions cs JOIN cash_registers cr ON cr.id=cs.cash_register_id WHERE cr.id=$1 AND cr.branch_id=$2 AND cs.status='OPEN' ORDER BY cs.opened_at DESC LIMIT 1`,[cashRegisterId,actor.branchId]);
+    return row?cashSessionSnapshot(row):null;
+  }
   async openCashSession(actor: BillingActor, operationId: string, input: OpenCashSessionRequest): Promise<CashSession> {
     return this.command(actor,operationId,"cash_sessions.open",input,async(client,companyId)=>{
       const register=await one<{id:string}>(client,"SELECT id FROM cash_registers WHERE id=$1 AND branch_id=$2 AND active FOR UPDATE",[input.cashRegisterId,actor.branchId]);

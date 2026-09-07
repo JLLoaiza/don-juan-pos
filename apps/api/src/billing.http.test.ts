@@ -3,11 +3,11 @@ import { buildApi } from "./app.js";
 import type { AuthService } from "./auth.js";
 
 const branch = { id: "00000000-0000-4000-8000-000000000003", name: "Centro", code: "CENTRO", settings: {} };
-const context = { user: { id: "00000000-0000-4000-8000-000000000001", displayName: "Admin" }, branches: [branch], activeBranch: branch, permissions: ["payments.view", "payments.create", "cash.open", "sales.apply_discount", "sales.modify_service"] };
+const context = { user: { id: "00000000-0000-4000-8000-000000000001", displayName: "Admin" }, branches: [branch], activeBranch: branch, permissions: ["payments.view", "payments.create", "cash.open", "cash.view", "sales.apply_discount", "sales.modify_service"] };
 const auth: AuthService = { login: async () => { throw new Error("not used"); }, refresh: async () => { throw new Error("not used"); }, context: async () => context, setActiveBranch: async () => context };
 const payment = { id: "00000000-0000-4000-8000-000000000090", accountId: "00000000-0000-4000-8000-000000000099", accountSplitId: null, paymentMethodId: "00000000-0000-4000-8000-000000000091", paymentMethodName: "Efectivo", paymentMethodType: "CASH", status: "REGISTERED", amountApplied: "10.00", cashReceived: "10.00", changeAmount: "0.00", reference: null, notes: null, cashSessionId: "00000000-0000-4000-8000-000000000092", receivedByUserId: context.user.id, receivedAt: "2026-09-07T00:00:00.000Z" };
 const billingSnapshot = { accountId: payment.accountId, status: "OPEN", version: 2, settlementMode: "DIRECT", subtotal: "10.00", discountTotal: "0.00", taxTotal: "0.00", servicePercentage: "0", serviceTotal: "0.00", total: "10.00", paidTotal: "0.00", remainingBalance: "10.00", hasPayments: false, discounts: [], splits: [], payments: [] };
-const billing = { billing: vi.fn(async () => billingSnapshot), registerPayment: vi.fn(async () => payment), openCashSession: vi.fn(async () => ({ id: "00000000-0000-4000-8000-000000000092" })), applyAccountDiscount: vi.fn(async () => billingSnapshot), configureService: vi.fn(async () => billingSnapshot) };
+const billing = { billing: vi.fn(async () => billingSnapshot), registerPayment: vi.fn(async () => payment), openCashSession: vi.fn(async () => ({ id: "00000000-0000-4000-8000-000000000092" })), applyAccountDiscount: vi.fn(async () => billingSnapshot), configureService: vi.fn(async () => billingSnapshot), cashRegisters: vi.fn(async () => ({ cashRegisters: [] })), openCashSessionForRegister: vi.fn(async () => null) };
 
 describe("billing HTTP authorization and contracts", () => {
   it("requires authentication before exposing account billing", async () => {
@@ -37,5 +37,14 @@ describe("billing HTTP authorization and contracts", () => {
     expect(discount.statusCode).toBe(200); expect(service.statusCode).toBe(200);
     expect(billing.applyAccountDiscount).toHaveBeenLastCalledWith({ userId: context.user.id, branchId: branch.id }, "00000000-0000-4000-8000-000000000011", payment.accountId, expect.not.objectContaining({ companyId: expect.anything() }));
     expect(billing.configureService).toHaveBeenLastCalledWith({ userId: context.user.id, branchId: branch.id }, "00000000-0000-4000-8000-000000000012", payment.accountId, expect.not.objectContaining({ companyId: expect.anything() }));
+  });
+  it("lists only the authenticated branch cash registers and their open session", async () => {
+    const app = buildApi({ database: { check: async () => undefined }, auth, billing: billing as never });
+    const list = await app.inject({ method: "GET", url: "/cash-registers", headers: { authorization: "Bearer token" } });
+    const open = await app.inject({ method: "GET", url: "/cash-registers/00000000-0000-4000-8000-000000000092/open-session", headers: { authorization: "Bearer token" } });
+    await app.close();
+    expect(list.statusCode).toBe(200); expect(open.statusCode).toBe(200);
+    expect(billing.cashRegisters).toHaveBeenLastCalledWith({ userId: context.user.id, branchId: branch.id });
+    expect(billing.openCashSessionForRegister).toHaveBeenLastCalledWith({ userId: context.user.id, branchId: branch.id }, "00000000-0000-4000-8000-000000000092");
   });
 });

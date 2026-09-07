@@ -50,6 +50,8 @@ export const CashSessionSchema = z.object({
   openedByUserId: EntityIdSchema, openedAt: z.string().datetime(), closedAt: z.string().datetime().nullable(), version: PositiveVersionSchema,
 });
 export const OpenCashSessionRequestSchema = z.object({ cashRegisterId: EntityIdSchema, openingAmount: MoneySchema, notes: NotesSchema });
+export const CashRegisterContextSchema = CashRegisterSchema.extend({ openSession: CashSessionSchema.nullable() });
+export const CashRegisterListSchema = z.object({ cashRegisters: z.array(CashRegisterContextSchema) });
 export const CashAdjustmentDirectionSchema = z.enum(["INCREASE", "DECREASE"]);
 export const CashAdjustmentRequestSchema = z.object({ expectedVersion: PositiveVersionSchema, amount: PositiveMoneySchema, direction: CashAdjustmentDirectionSchema, reason: z.string().trim().min(1).max(2_000) });
 export const CloseCashSessionRequestSchema = z.object({ expectedVersion: PositiveVersionSchema, countedCash: MoneySchema, notes: NotesSchema, printReceipt: z.boolean().default(true) });
