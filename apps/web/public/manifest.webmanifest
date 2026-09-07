@@ -1,0 +1,18 @@
+{
+  "name": "Don Juan POS/ERP",
+  "short_name": "Don Juan",
+  "description": "PWA de punto de venta y operación para restaurantes.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f5f6f8",
+  "theme_color": "#1f5eff",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
