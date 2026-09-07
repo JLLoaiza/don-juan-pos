@@ -30,6 +30,7 @@ export interface RequestOptions {
 export interface HttpClient {
   getJson<T>(path: string, schema: z.ZodType<T>, options?: RequestOptions): Promise<T>;
   postJson<T>(path: string, schema: z.ZodType<T>, options?: RequestOptions): Promise<T>;
+  putJson<T>(path: string, schema: z.ZodType<T>, options?: RequestOptions): Promise<T>;
 }
 
 async function readErrorBody(response: Response): Promise<unknown> {
@@ -41,7 +42,7 @@ async function readErrorBody(response: Response): Promise<unknown> {
 }
 
 export function createHttpClient({ baseUrl, fetchImpl }: HttpClientConfig): HttpClient {
-  async function send<T>(method: "GET" | "POST", path: string, schema: z.ZodType<T>, options: RequestOptions = {}): Promise<T> {
+  async function send<T>(method: "GET" | "POST" | "PUT", path: string, schema: z.ZodType<T>, options: RequestOptions = {}): Promise<T> {
     // Resolved per call (not captured once as a default parameter) so a
     // caller that swaps out globalThis.fetch after this client was built
     // (e.g. a test) is honored.
@@ -75,5 +76,6 @@ export function createHttpClient({ baseUrl, fetchImpl }: HttpClientConfig): Http
   return {
     getJson: (path, schema, options) => send("GET", path, schema, options),
     postJson: (path, schema, options) => send("POST", path, schema, options),
+    putJson: (path, schema, options) => send("PUT", path, schema, options),
   };
 }

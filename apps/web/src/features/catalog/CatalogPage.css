@@ -1,0 +1,192 @@
+.dj-catalog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dj-space-4);
+}
+
+.dj-catalog__tabs {
+  display: flex;
+  gap: var(--dj-space-2);
+  border-bottom: 1px solid var(--dj-color-border);
+}
+
+.dj-catalog__tab {
+  font: inherit;
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: var(--dj-space-2) var(--dj-space-1);
+  color: var(--dj-color-text-muted);
+  font-weight: 600;
+}
+
+.dj-catalog__tab:hover {
+  color: var(--dj-color-text);
+}
+
+.dj-catalog__tab--active {
+  color: var(--dj-color-primary);
+  border-bottom-color: var(--dj-color-primary);
+}
+
+.dj-catalog-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dj-space-4);
+}
+
+.dj-catalog-section__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--dj-space-3);
+  align-items: center;
+}
+
+.dj-catalog-section__search {
+  font: inherit;
+  padding: var(--dj-space-2) var(--dj-space-3);
+  border-radius: var(--dj-radius-sm);
+  border: 1px solid var(--dj-color-border);
+  background: var(--dj-color-surface);
+  color: var(--dj-color-text);
+  min-width: 16rem;
+}
+
+.dj-catalog-section__toolbar select {
+  font: inherit;
+  padding: var(--dj-space-2) var(--dj-space-3);
+  border-radius: var(--dj-radius-sm);
+  border: 1px solid var(--dj-color-border);
+  background: var(--dj-color-surface);
+  color: var(--dj-color-text);
+}
+
+.dj-catalog-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--dj-color-surface);
+  border: 1px solid var(--dj-color-border);
+  border-radius: var(--dj-radius-md);
+  overflow: hidden;
+}
+
+.dj-catalog-table th,
+.dj-catalog-table td {
+  text-align: left;
+  padding: var(--dj-space-2) var(--dj-space-3);
+  border-bottom: 1px solid var(--dj-color-border);
+  font-size: var(--dj-font-size-sm);
+}
+
+.dj-catalog-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.dj-catalog-table__actions {
+  display: flex;
+  gap: var(--dj-space-2);
+  white-space: nowrap;
+}
+
+.dj-catalog-table__actions button {
+  font: inherit;
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--dj-color-border);
+  border-radius: var(--dj-radius-sm);
+  padding: var(--dj-space-1) var(--dj-space-2);
+  color: var(--dj-color-text-muted);
+}
+
+.dj-catalog-table__actions button:hover {
+  background: var(--dj-color-neutral-bg);
+  color: var(--dj-color-text);
+}
+
+.dj-catalog-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dj-space-3);
+  background: var(--dj-color-surface);
+  border: 1px solid var(--dj-color-border);
+  border-radius: var(--dj-radius-md);
+  padding: var(--dj-space-4);
+  max-width: 40rem;
+}
+
+.dj-catalog-form h3 {
+  margin: 0;
+}
+
+.dj-catalog-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dj-space-1);
+  font-size: var(--dj-font-size-sm);
+  font-weight: 600;
+}
+
+.dj-catalog-form__field input,
+.dj-catalog-form__field select,
+.dj-catalog-form__field textarea {
+  font: inherit;
+  font-weight: 400;
+  padding: var(--dj-space-2) var(--dj-space-3);
+  border-radius: var(--dj-radius-sm);
+  border: 1px solid var(--dj-color-border);
+  background: var(--dj-color-bg);
+  color: var(--dj-color-text);
+}
+
+.dj-catalog-form__field small {
+  color: var(--dj-color-text-muted);
+  font-weight: 400;
+}
+
+.dj-catalog-form__hint {
+  color: var(--dj-color-text-muted);
+  font-size: var(--dj-font-size-sm);
+  margin: 0;
+}
+
+.dj-catalog-form__checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--dj-space-2);
+  font-size: var(--dj-font-size-sm);
+  font-weight: 600;
+}
+
+.dj-catalog-form__actions {
+  display: flex;
+  gap: var(--dj-space-2);
+}
+
+.dj-catalog-form__components {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dj-space-2);
+  border-top: 1px solid var(--dj-color-border);
+  padding-top: var(--dj-space-3);
+}
+
+.dj-catalog-form__components-label {
+  font-size: var(--dj-font-size-sm);
+  font-weight: 600;
+}
+
+.dj-catalog-form__component-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--dj-space-2);
+  align-items: center;
+}
+
+.dj-catalog-form__additional-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--dj-space-2);
+  align-items: center;
+  font-size: var(--dj-font-size-sm);
+}

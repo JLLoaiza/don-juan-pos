@@ -32,7 +32,8 @@ export interface AuthContextValue extends AuthState {
   logout(): void;
   setActiveBranch(branchId: string): Promise<void>;
   authGet<T>(path: string, schema: z.ZodType<T>): Promise<T>;
-  authPost<T>(path: string, schema: z.ZodType<T>, body?: unknown): Promise<T>;
+  authPost<T>(path: string, schema: z.ZodType<T>, body?: unknown, headers?: Record<string, string>): Promise<T>;
+  authPut<T>(path: string, schema: z.ZodType<T>, body?: unknown, headers?: Record<string, string>): Promise<T>;
 }
 
 export const AuthReactContext = createContext<AuthContextValue | null>(null);
@@ -140,13 +141,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     withAutoRefresh((accessToken) => httpClient.getJson(path, schema, { headers: { authorization: `Bearer ${accessToken}` } })),
   [withAutoRefresh]);
 
-  const authPost = useCallback(<T,>(path: string, schema: z.ZodType<T>, body?: unknown): Promise<T> =>
-    withAutoRefresh((accessToken) => httpClient.postJson(path, schema, { headers: { authorization: `Bearer ${accessToken}` }, body })),
+  const authPost = useCallback(<T,>(path: string, schema: z.ZodType<T>, body?: unknown, headers?: Record<string, string>): Promise<T> =>
+    withAutoRefresh((accessToken) => httpClient.postJson(path, schema, { headers: { authorization: `Bearer ${accessToken}`, ...headers }, body })),
+  [withAutoRefresh]);
+
+  const authPut = useCallback(<T,>(path: string, schema: z.ZodType<T>, body?: unknown, headers?: Record<string, string>): Promise<T> =>
+    withAutoRefresh((accessToken) => httpClient.putJson(path, schema, { headers: { authorization: `Bearer ${accessToken}`, ...headers }, body })),
   [withAutoRefresh]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ ...state, login, logout, setActiveBranch, authGet, authPost }),
-    [state, login, logout, setActiveBranch, authGet, authPost],
+    () => ({ ...state, login, logout, setActiveBranch, authGet, authPost, authPut }),
+    [state, login, logout, setActiveBranch, authGet, authPost, authPut],
   );
 
   return <AuthReactContext.Provider value={value}>{children}</AuthReactContext.Provider>;

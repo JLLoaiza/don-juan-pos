@@ -5,7 +5,8 @@ import { createAuthApi } from "./authApi";
 function fakeHttpClient(): { http: HttpClient; getJson: ReturnType<typeof vi.fn>; postJson: ReturnType<typeof vi.fn> } {
   const getJson = vi.fn(async () => ({}) as never);
   const postJson = vi.fn(async () => ({}) as never);
-  return { http: { getJson, postJson }, getJson, postJson };
+  const putJson = vi.fn(async () => ({}) as never);
+  return { http: { getJson, postJson, putJson }, getJson, postJson };
 }
 
 describe("createAuthApi", () => {
