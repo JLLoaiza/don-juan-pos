@@ -26,4 +26,11 @@ describe("floor HTTP authorization and contracts", () => {
     expect(floor.openAccount).toHaveBeenLastCalledWith({ userId: context.user.id, branchId: branch.id }, "00000000-0000-4000-8000-000000000010", expect.objectContaining({ tableId: payload.tableId }));
     expect((floor.openAccount.mock.calls as unknown as [unknown, unknown, Record<string, unknown>][]).at(-1)?.[2]).not.toHaveProperty("companyId");
   });
+  it("does not request account costs when the session lacks products.view_cost", async () => {
+    const app = buildApi({ database: { check: async () => undefined }, auth, floor: floor as never });
+    const accountId = "00000000-0000-4000-8000-000000000099";
+    await app.inject({ method: "GET", url: `/accounts/${accountId}`, headers: { authorization: "Bearer token" } });
+    await app.close();
+    expect(floor.account).toHaveBeenLastCalledWith({ userId: context.user.id, branchId: branch.id }, accountId, false);
+  });
 });

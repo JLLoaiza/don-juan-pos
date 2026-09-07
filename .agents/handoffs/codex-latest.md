@@ -22,6 +22,7 @@ Los schemas Zod y tipos están en `packages/contracts/src/floor.ts`, exportados 
 - El frontend solo selecciona `branch_id` mediante `POST /me/active-branch`; no mostrar, guardar ni enviar compañía.
 - Mantener un UUID por cada intento de comando y reenviarlo como `Idempotency-Key` ante reintentos.
 - `confirm-consumption` exige la `version` de la cuenta leída. Un `409 CONFLICT` significa recargar la cuenta antes de volver a confirmar.
+- Cambio de contrato compatible: `AccountItemSnapshot.unitCost` ahora puede ser `null`. El backend solo lo devuelve con `products.view_cost`; también elimina `totalCost` y `unitCost` de `consumptionSnapshot` sin ese permiso. El frontend actual ya maneja `null` al formatear montos.
 - `quantity` es string entero positivo. El cliente solo expresa intención: no manda precio, costo, impuesto, total ni receta.
 - `selectedAdditionals[].noCharge` solo funciona si el producto permite el adicional gratuito; incluso gratuito descuenta inventario.
 - La respuesta de confirmación contiene la cuenta actualizada, ticket de cocina, print job y alertas `NEGATIVE_STOCK`. No bloquear la venta por alerta de stock.
