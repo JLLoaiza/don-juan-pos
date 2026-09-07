@@ -27,6 +27,7 @@ describeIntegration("PostgreSQL migrations", () => {
       "0009_identity_access.sql",
       "0010_identity_initial_data.sql",
       "0011_development_identity_seed.sql",
+      "0012_catalog_integrity_and_commands.sql",
     ]);
 
     const integrity = await pool.query<{ index_exists: string | null; version_exists: string | null }>(`

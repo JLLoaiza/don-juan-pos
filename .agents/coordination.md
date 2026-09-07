@@ -92,3 +92,13 @@ Se implementó la opción recomendada para roles globales y sesiones: `0009_iden
 `POST /me/active-branch` conserva únicamente `{ branchId }`. Antes de persistirlo, el backend resuelve usuario y compañía desde la sesión, comprueba que la sucursal pertenece a esa compañía y que existe `user_branch_access`. Una coincidencia ambigua de las mismas credenciales en más de una compañía se rechaza sin revelar tenancy.
 
 **Compatibilidad.** Es un breaking change deliberado para los consumidores de `LoginRequest` y `AuthContext`. El dominio y PostgreSQL conservan `companies` y `company_id` como frontera interna de tenancy.
+
+## 2026-09-07 — Criterios de catálogo e idempotencia de Fase 2
+
+**Decisiones aplicadas.** La Fase 2 usará `NUMERIC` de PostgreSQL como fuente de cálculo monetario/costos (precio a escala 2 y costo a escala 6); los contratos transportan decimales como strings, nunca `number` de JavaScript. `sale_price = 0` no admite una actualización basada en margen y `targetMargin` debe ser menor que 100. Los redondeos persisten con la escala de las columnas.
+
+No se adelanta `CONFIRM_PURCHASE`: compras son Fase 5. En Fase 2 el costo se fija solo al crear el ítem y los ajustes de stock no lo alteran. Se publica un ledger `command_operations` para `operation_id` de comandos HTTP, según la recomendación ya documentada, porque ajustes y recetas requieren reintentos sin duplicar Kardex/auditoría.
+
+**Integridad.** Las referencias de receta y adicionales reciben triggers defensivos de sucursal además de validación transaccional. Esto impide que una FK válida pero perteneciente a otra sede se introduzca por SQL directo.
+
+**Estado.** Implementación en curso; ChatGPT puede revisar estas decisiones sin bloquear los contratos de catálogo.
