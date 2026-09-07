@@ -4,7 +4,6 @@ import { clearAuthSnapshot, loadAuthSnapshot, saveAuthSnapshot } from "./authCac
 
 const CONTEXT: AuthContext = {
   user: { id: "00000000-0000-7000-8000-000000000002", displayName: "Ana" },
-  company: { id: "00000000-0000-7000-8000-000000000001", name: "Don Juan", currency: "COP", timezone: "America/Bogota" },
   branches: [{ id: "00000000-0000-7000-8000-000000000003", name: "Centro", code: "CTR", settings: {} }],
   activeBranch: { id: "00000000-0000-7000-8000-000000000003", name: "Centro", code: "CTR", settings: {} },
   permissions: ["floor.view"],

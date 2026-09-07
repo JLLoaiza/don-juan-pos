@@ -5,8 +5,6 @@ import { ApiRequestError } from "../../lib/api/httpClient";
 import { useAuth } from "./useAuth";
 import "./LoginPage.css";
 
-const DEFAULT_COMPANY_ID: string | undefined = import.meta.env.VITE_DEFAULT_COMPANY_ID;
-
 function loginErrorMessage(error: unknown): string {
   if (error instanceof ApiRequestError) {
     if (error.kind === "network") return "No se pudo contactar el servidor. Verifica tu conexión.";
@@ -20,7 +18,6 @@ export function LoginPage() {
   const auth = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [companyId, setCompanyId] = useState(DEFAULT_COMPANY_ID ?? "");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -37,7 +34,7 @@ export function LoginPage() {
     setSubmitting(true);
     setError(null);
     auth
-      .login({ companyId, username, password })
+      .login({ username, password })
       .then(() => {
         const from = (location.state as { from?: Location } | null)?.from?.pathname ?? "/";
         navigate(from, { replace: true });
@@ -55,19 +52,6 @@ export function LoginPage() {
         <p className="dj-login__subtitle">Inicia sesión para continuar.</p>
 
         {error ? <Banner tone="danger" title={error} /> : null}
-
-        {DEFAULT_COMPANY_ID ? null : (
-          <label className="dj-login__field">
-            <span>ID de compañía</span>
-            <input
-              value={companyId}
-              onChange={(event) => setCompanyId(event.target.value)}
-              required
-              disabled={submitting}
-              autoComplete="off"
-            />
-          </label>
-        )}
 
         <label className="dj-login__field">
           <span>Usuario</span>

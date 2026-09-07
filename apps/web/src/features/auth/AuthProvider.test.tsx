@@ -10,10 +10,13 @@ import { clearAuthSnapshot, loadAuthSnapshot, saveAuthSnapshot } from "./authCac
 const { getJson, postJson } = vi.hoisted(() => ({ getJson: vi.fn(), postJson: vi.fn() }));
 vi.mock("../../lib/api/client", () => ({ httpClient: { getJson, postJson } }));
 
+const CREDENTIALS = { username: "ana", password: "secret" };
 const BRANCH = { id: "b1", name: "Centro", code: "CTR", settings: {} };
+// Company is internal tenancy only — the contract never exposes or accepts
+// it (see codex-latest.md "Corrección de Fase 1"). Fixtures below mirror
+// AuthContext exactly: user, branches, activeBranch, permissions.
 const AUTH_CONTEXT: AuthContext = {
   user: { id: "u1", displayName: "Ana" },
-  company: { id: "c1", name: "Don Juan", currency: "COP", timezone: "America/Bogota" },
   branches: [BRANCH],
   activeBranch: BRANCH,
   permissions: ["floor.view"],
@@ -66,19 +69,53 @@ describe("AuthProvider", () => {
     await waitFor(() => expect(view.auth.status).toBe("unauthenticated"));
   });
 
-  it("logs in and persists the session and the offline snapshot", async () => {
+  it("logs in with only username/password and persists the session and the offline snapshot", async () => {
     postJson.mockResolvedValue(AUTHENTICATED);
     const view = renderAuth();
     await waitFor(() => expect(view.auth.status).toBe("unauthenticated"));
 
     await act(async () => {
-      await view.auth.login({ companyId: "c1", username: "ana", password: "secret" });
+      await view.auth.login(CREDENTIALS);
     });
 
+    expect(postJson).toHaveBeenCalledWith("/auth/login", expect.anything(), { body: CREDENTIALS });
     expect(view.auth.status).toBe("authenticated");
     expect(view.auth.context?.user.displayName).toBe("Ana");
     expect(loadSession()).toEqual(SESSION);
     expect(await loadAuthSnapshot()).toMatchObject({ context: AUTH_CONTEXT });
+  });
+
+  it("a single accessible branch is entered automatically (no picker needed)", async () => {
+    postJson.mockResolvedValue(AUTHENTICATED);
+    const view = renderAuth();
+    await waitFor(() => expect(view.auth.status).toBe("unauthenticated"));
+
+    await act(async () => {
+      await view.auth.login(CREDENTIALS);
+    });
+
+    expect(view.auth.context?.branches).toHaveLength(1);
+    expect(view.auth.context?.activeBranch?.id).toBe("b1");
+  });
+
+  it("several accessible branches come back with activeBranch null until the user picks one", async () => {
+    const branch2 = { id: "b2", name: "Norte", code: "NOR", settings: {} };
+    postJson.mockResolvedValue({
+      ...AUTH_CONTEXT,
+      branches: [BRANCH, branch2],
+      activeBranch: null,
+      session: SESSION,
+    });
+    const view = renderAuth();
+    await waitFor(() => expect(view.auth.status).toBe("unauthenticated"));
+
+    await act(async () => {
+      await view.auth.login(CREDENTIALS);
+    });
+
+    expect(view.auth.status).toBe("authenticated");
+    expect(view.auth.context?.branches).toHaveLength(2);
+    expect(view.auth.context?.activeBranch).toBeNull();
   });
 
   it("refreshes an existing stored session on boot", async () => {
@@ -128,7 +165,7 @@ describe("AuthProvider", () => {
     await waitFor(() => expect(view.auth.status).toBe("unauthenticated"));
 
     await act(async () => {
-      await view.auth.login({ companyId: "c1", username: "ana", password: "secret" });
+      await view.auth.login(CREDENTIALS);
     });
     expect(view.auth.status).toBe("authenticated");
 
@@ -146,7 +183,7 @@ describe("AuthProvider", () => {
     await waitFor(() => expect(view.auth.status).toBe("unauthenticated"));
 
     await act(async () => {
-      await view.auth.login({ companyId: "c1", username: "ana", password: "secret" });
+      await view.auth.login(CREDENTIALS);
     });
     expect(view.auth.status).toBe("authenticated");
 
@@ -167,5 +204,34 @@ describe("AuthProvider", () => {
 
     expect(activeBranchCalls).toBe(2);
     expect(view.auth.context?.activeBranch?.name).toBe("Norte");
+  });
+
+  it("switching branch updates activeBranch and effective permissions (the key branch-scoped data reloads against)", async () => {
+    postJson.mockResolvedValue(AUTHENTICATED);
+    const view = renderAuth();
+    await waitFor(() => expect(view.auth.status).toBe("unauthenticated"));
+    await act(async () => {
+      await view.auth.login(CREDENTIALS);
+    });
+    expect(view.auth.context?.activeBranch?.id).toBe("b1");
+    expect(view.auth.context?.permissions).toEqual(["floor.view"]);
+
+    const BRANCH_2 = { id: "b2", name: "Norte", code: "NOR", settings: {} };
+    postJson.mockImplementation(async (path: string) => {
+      if (path === "/me/active-branch") {
+        return { ...AUTH_CONTEXT, activeBranch: BRANCH_2, permissions: ["floor.view", "kitchen.view"] };
+      }
+      throw new Error(`unexpected path ${path}`);
+    });
+
+    await act(async () => {
+      await view.auth.setActiveBranch("b2");
+    });
+
+    // Any branch-scoped feature that keys its cache/fetch on activeBranch.id
+    // (e.g. `useEffect(() => {...}, [auth.context.activeBranch.id])`) sees a
+    // new key here and refetches — no separate invalidation bus needed.
+    expect(view.auth.context?.activeBranch?.id).toBe("b2");
+    expect(view.auth.context?.permissions).toEqual(["floor.view", "kitchen.view"]);
   });
 });

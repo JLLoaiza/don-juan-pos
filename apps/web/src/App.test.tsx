@@ -15,11 +15,9 @@ vi.mock("./lib/api/client", () => ({
   apiClient: { health: { getHealth } },
   httpClient: { getJson: getJsonMock, postJson },
 }));
-
 const BRANCH = { id: "b1", name: "Centro", code: "CTR", settings: {} };
 const AUTH_CONTEXT = {
   user: { id: "u1", displayName: "Ana" },
-  company: { id: "c1", name: "Don Juan", currency: "COP", timezone: "America/Bogota" },
   branches: [BRANCH],
   activeBranch: BRANCH,
   permissions: [],
@@ -63,9 +61,10 @@ afterEach(() => {
 });
 
 describe("App", () => {
-  it("redirects to /login when there is no stored session", async () => {
+  it("redirects to /login when there is no stored session, without ever asking for a company", async () => {
     renderApp(["/"]);
     expect(await screen.findByLabelText("Usuario")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/compañía/i)).not.toBeInTheDocument();
   });
 
   it("logs in from scratch and reaches the authenticated app", async () => {
@@ -74,7 +73,6 @@ describe("App", () => {
     renderApp(["/"]);
 
     await screen.findByLabelText("Usuario");
-    fireEvent.change(screen.getByLabelText("ID de compañía"), { target: { value: "c1" } });
     fireEvent.change(screen.getByLabelText("Usuario"), { target: { value: "ana" } });
     fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "secret" } });
     fireEvent.click(screen.getByRole("button", { name: "Ingresar" }));

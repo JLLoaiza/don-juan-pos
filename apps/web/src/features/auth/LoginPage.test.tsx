@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiRequestError } from "../../lib/api/httpClient";
 import { AuthReactContext, type AuthContextValue } from "./AuthProvider";
 import { LoginPage } from "./LoginPage";
@@ -35,18 +35,28 @@ function renderLogin(auth: AuthContextValue, initialEntries: Array<string | { pa
   );
 }
 
-function fillForm(username: string, password: string, companyId = "c1") {
-  fireEvent.change(screen.getByLabelText("ID de compañía"), { target: { value: companyId } });
+function fillForm(username: string, password: string) {
   fireEvent.change(screen.getByLabelText("Usuario"), { target: { value: username } });
   fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: password } });
 }
 
 describe("LoginPage", () => {
-  it("renders the login form, including the company field when no default is configured", () => {
+  it("never asks for a company: only shows username and password", () => {
     renderLogin(makeAuth());
-    expect(screen.getByLabelText("ID de compañía")).toBeInTheDocument();
     expect(screen.getByLabelText("Usuario")).toBeInTheDocument();
     expect(screen.getByLabelText("Contraseña")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/compañía/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/compañía/i)).not.toBeInTheDocument();
+  });
+
+  it("logs in with only username and password", async () => {
+    const login = vi.fn().mockResolvedValue(undefined);
+    renderLogin(makeAuth({ login }));
+
+    fillForm("ana", "secret");
+    fireEvent.click(screen.getByRole("button", { name: "Ingresar" }));
+
+    await waitFor(() => expect(login).toHaveBeenCalledWith({ username: "ana", password: "secret" }));
   });
 
   it("redirects immediately if already authenticated", () => {

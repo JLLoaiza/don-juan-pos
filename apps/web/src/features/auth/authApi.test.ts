@@ -9,11 +9,11 @@ function fakeHttpClient(): { http: HttpClient; getJson: ReturnType<typeof vi.fn>
 }
 
 describe("createAuthApi", () => {
-  it("posts login with the given credentials", async () => {
+  it("posts login with only username and password (company is implicit, never sent)", async () => {
     const { http, postJson } = fakeHttpClient();
-    await createAuthApi(http).login({ companyId: "c1", username: "ana", password: "secret" });
+    await createAuthApi(http).login({ username: "ana", password: "secret" });
     expect(postJson).toHaveBeenCalledWith("/auth/login", expect.anything(), {
-      body: { companyId: "c1", username: "ana", password: "secret" },
+      body: { username: "ana", password: "secret" },
     });
   });
 

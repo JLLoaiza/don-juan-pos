@@ -105,6 +105,11 @@ export function AppShell() {
       <main className="dj-shell__content">
         {auth.context?.activeBranch ? (
           <Outlet context={connectivity} />
+        ) : (auth.context?.branches.length ?? 0) > 1 ? (
+          <EmptyState
+            title="Elige una sucursal"
+            description="Selecciona una sucursal arriba para continuar."
+          />
         ) : (
           <EmptyState
             title="Sin sucursal activa"
