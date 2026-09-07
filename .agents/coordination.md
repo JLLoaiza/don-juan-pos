@@ -157,3 +157,20 @@ No se adelanta `CONFIRM_PURCHASE`: compras son Fase 5. En Fase 2 el costo se fij
 **Invariantes ya no ambiguas.** Todo pago debe bloquear cuenta (y split si aplica), recalcular saldo autoritativo, ser idempotente, evitar sobrepago, y confirmar en el mismo commit pago, movimiento de caja si aplica, cuenta `PAID`/liberación de mesa, recibo, auditoría y outbox. Ningún worker participa en esa consistencia.
 
 **Estado.** Las propuestas fueron autorizadas por el usuario el 2026-09-07. Codex las aplicará en contratos/migraciones de Fase 4; Claude puede usar mocks provisionales hasta que cada ruta se publique en el handoff.
+
+## 2026-09-07 — Frontend de Fase 4 (parcial) implementado; falta listar métodos de pago y cajas registradoras
+
+**Contexto.** Implementé la UI contra las cinco rutas que Codex publicó de verdad (`GET /accounts/:id/billing`, `POST /accounts/:id/discounts`, `PUT /accounts/:id/service`, `POST /accounts/:id/payments`, `POST /cash-sessions`), integradas dentro de `/floor/accounts/:id` (una sección "Cobro" junto a la cuenta, no una pantalla `/billing` aparte, porque las cinco rutas son todas por cuenta o de comando puntual). No usé mocks para las tres primeras porque son contratos reales y completos.
+
+**Lo que SÍ se implementó (sin mocks, contra rutas reales).**
+
+1. Snapshot de cobro: pagado, saldo pendiente, descuentos, servicio, historial de pagos (solo lectura de lo ya registrado).
+2. Aplicar descuento (`sales.apply_discount`) — nombre, tipo (porcentaje/monto fijo), valor.
+3. Configurar servicio (`sales.modify_service`) — porcentaje.
+4. Ambos se ocultan una vez `billing.hasPayments` es verdadero, igual que `lockedCommercialAccount` en `apps/api/src/billing.ts` los rechaza. También oculté "Agregar consumo" (Fase 3) en ese caso: `apps/api/src/floor.ts` ahora rechaza consumo nuevo tras el primer pago aunque la cuenta siga `OPEN`, y el frontend ya lo refleja.
+
+**Vacío detectado que SÍ bloquea (no hay mock razonable, no se inventó nada).** `POST /accounts/:id/payments` requiere `paymentMethodId`, y `POST /cash-sessions` requiere `cashRegisterId` — ambos son válidos y funcionan, pero no existe ningún `GET` para listar los métodos de pago activos ni las cajas registradoras de una sucursal (`payment_methods`/`cash_registers` tampoco tienen seed de desarrollo en ninguna migración). Sin eso no hay forma de construir un selector real: la única alternativa sería pedirle al cajero que escriba un UUID a mano, que no es una interfaz utilizable ni cumple "no uses IDs internos como campos visibles". Dejé un aviso visible (solo para quien tiene `payments.create`) explicando que registrar pago está pendiente de ese endpoint, y no implementé nada de apertura/cierre de caja.
+
+**Sugerencia para Codex.** Publicar `GET /payment-methods` y `GET /cash-registers` (listado activo de la sucursal) antes de que el frontend pueda completar pagos y caja. División de cuenta (`sales.split`) y cierre/ajuste de caja tampoco tienen ruta todavía (confirmado en `apps/api/src/app.ts`); frontend no los tocó.
+
+**Estado.** Frontend de Fase 4 `PARTIAL`, listo para integración de lo ya construido. Pagos, caja y divisiones quedan pendientes de las rutas/listados faltantes.

@@ -74,3 +74,5 @@ Descuentos y servicio ya tienen las rutas indicadas. Los contratos de divisiones
 - Se añadió prueba PostgreSQL de apertura, pago efectivo, movimiento, cierre de cuenta, recibo, outbox y replay idempotente. Queda pendiente ejecutarla en el entorno local porque Docker Desktop no está iniciado.
 
 Actualización: POST /cash-sessions/:id/adjustments recibe { expectedVersion, amount, direction: INCREASE|DECREASE, reason } con cash.adjust; POST /cash-sessions/:id/close recibe { expectedVersion, countedCash, notes?, printReceipt? } con cash.close. Ambos usan Idempotency-Key; el cierre bloquea la sesión, calcula efectivo esperado desde movimientos y persiste snapshot inmutable.
+
+Actualización de cierre: cuando printReceipt es verdadero, el cierre crea un print_job DAY_CLOSE con el snapshot persistido. Sin impresora CASH activa queda FAILED con causa explícita, sin revertir la sesión cerrada.

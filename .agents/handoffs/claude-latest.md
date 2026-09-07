@@ -2,55 +2,57 @@
 
 ## Fase realizada
 
-Fase 3 — Salón, mesas, cuentas y consumo (frontend). Estado: **COMPLETE**. Backend, contratos y migraciones de Fase 3 fueron publicados y commiteados por Codex durante este mismo ciclo (`0e52c3a feat(floor): add transactional table consumption`, más los ajustes de trigger `0014`/`0015` y la publicación posterior de `POST /dining-areas`/`POST /restaurant-tables`); implementé la UI completa contra esos contratos, incluyendo la creación de áreas/mesas que se agregó a mitad de sesión.
+Fase 4 — Cobro (frontend). Estado: **PARTIAL**, igual que el backend (Codex documentó Fase 4 como parcialmente disponible en `.agents/handoffs/codex-latest.md`: pagos directos y apertura de caja publicados, divisiones/cierre/ajustes de caja todavía sin ruta). Implementé todo lo que las rutas reales permiten, sin mocks para lo que sí existe y sin inventar nada para lo que no.
 
 ## Pantallas y flujos implementados
 
-Todo bajo `apps/web/src/features/floor/`, montado en `/floor` (reemplaza el placeholder) y en la nueva ruta `/floor/accounts/:accountId`:
+Todo bajo `apps/web/src/features/floor/`, integrado dentro de la pantalla de cuenta existente (`/floor/accounts/:accountId`) como una nueva sección "Cobro" (`BillingSection.tsx`) — no una pantalla `/billing` independiente, porque las cinco rutas de Fase 4 son todas por cuenta o comandos puntuales, no un listado global.
 
-- **Salón (`FloorPage`)**: mesas agrupadas por área, coloreadas por estado (disponible=blanco, ocupada=amarillo, reservada=naranja, según §8 de `tables-accounts-orders.md`). Click en una mesa con cuenta abierta navega a esa cuenta; click en una mesa disponible/reservada abre una cuenta nueva (`POST /accounts`) y navega a ella. Botones "Nueva área" / "Nueva mesa" (gateados por `dining_areas.create` / `tables.create`) para dar de alta áreas y mesas — necesarios porque antes de este ciclo no existía forma de poblar el salón salvo SQL directo; Codex publicó `POST /dining-areas` y `POST /restaurant-tables` durante la sesión y los consumí en cuanto aparecieron.
-- **Cuenta (`AccountPage`)**: encabezado con estado (Abierta/Pagada/Anulada), tabla de ítems confirmados (producto, cantidad, precio, costo si hay permiso, total de línea, estado, notas, adicionales anidados), totales (subtotal, descuentos, servicio, impuestos, total). Banner de confirmación tras enviar consumo: número de ticket de cocina y estado del trabajo de impresión, o alerta de stock negativo (nunca bloquea la venta).
-- **Agregar consumo (`ConsumptionForm`)**: solo visible en cuenta `OPEN` con los tres permisos que exige el endpoint (`accounts.update`, `sales.add_items`, `kitchen.send`). Permite agregar varias líneas de producto (desde el catálogo ya cargado), cantidad entera positiva, notas por línea, y selección de adicionales configurados para ese producto específico (con casilla "sin costo" solo si el adicional lo permite). Valida con el mismo `ConfirmConsumptionRequestSchema` publicado antes de enviar.
-- Estados de carga/error/vacío en ambas pantallas (`ErrorState` forbidden/network/server con reintento); evita doble envío con `submitting` por formulario; recarga la cuenta tras confirmar consumo.
-- El precio, costo, impuesto, receta y totales los resuelve siempre el servidor; el frontend solo envía intención (`productId`, `quantity`, `selectedAdditionals`, `notes`) — nunca precio ni costo.
+- **Snapshot de cobro** (`GET /accounts/:id/billing`, permiso `payments.view`): pagado, saldo pendiente, descuentos aplicados (nombre, tipo, valor, monto aplicado), historial de pagos (método, monto aplicado, efectivo recibido/cambio si es efectivo, estado, fecha).
+- **Aplicar descuento** (`POST /accounts/:id/discounts`, permiso `sales.apply_discount`): nombre, tipo (porcentaje/monto fijo), valor; valida con el mismo `ApplyAccountDiscountRequestSchema` publicado antes de enviar.
+- **Configurar servicio** (`PUT /accounts/:id/service`, permiso `sales.modify_service`): porcentaje, precargado con el valor actual.
+- Ambas acciones se ocultan una vez `billing.hasPayments` es verdadero — igual que `apps/api/src/billing.ts` (`lockedCommercialAccount`) las rechaza tras el primer pago. También oculté "Agregar consumo" (Fase 3, `ConsumptionForm`) en ese mismo caso: `apps/api/src/floor.ts` ahora rechaza consumo nuevo tras el primer pago aunque la cuenta siga `OPEN`, así que el frontend espera a que el snapshot de cobro cargue (`billing.status === "ready"`) antes de decidir si mostrar el formulario, para no mostrarlo un instante y ocultarlo después.
+- Toda mutación de cobro recarga tanto el snapshot de cobro como la cuenta (Fase 3), porque ambas comparten `accounts.version` y una mutación de cobro incrementa esa versión — sin recargar la cuenta, un intento posterior de confirmar consumo fallaría con `409` por versión desactualizada.
 
 ## Contratos consumidos
 
-`GET /floor`, `POST /dining-areas`, `POST /restaurant-tables`, `GET /accounts/:id`, `POST /accounts`, `POST /accounts/:id/confirm-consumption` — todos desde `@don-juan/contracts` (`packages/contracts/src/floor.ts`). Para el selector de productos/adicionales dentro de una cuenta reutilicé `useCatalog()` de Fase 2 (ya construido), que exige `products.view` + `inventory.view` + `accompaniments.view` juntos — si un rol de mesero no tiene esos tres permisos, ese bloque muestra su propio `ErrorState`, sin tumbar el resto de la pantalla de cuenta.
+`GET /accounts/:id/billing`, `POST /accounts/:id/discounts`, `PUT /accounts/:id/service` — desde `@don-juan/contracts` (`packages/contracts/src/billing.ts`), a través de `apps/web/src/features/floor/billingApi.ts` (nuevo).
 
-## Vacío de contrato detectado (documentado, no inventado)
+## Lo que NO se implementó, y por qué
 
-`AccountItemSnapshotSchema.unitCost` no es nullable — el backend siempre lo envía en `GET /accounts/:id` y en la respuesta de `confirm-consumption`, a diferencia de `GET /catalog` que sí oculta costo sin `products.view_cost`/`inventory.view_cost`. El frontend oculta la columna de costo en la tabla de ítems cuando el usuario no tiene `products.view_cost`, pero es solo ocultamiento de presentación: el valor ya viaja en el cuerpo de la respuesta HTTP que el navegador recibió. Documentado en `.agents/coordination.md` con la sugerencia de que el backend omita `unitCost` por ítem según permiso, igual que ya hace catálogo.
+`POST /accounts/:id/payments` y `POST /cash-sessions` son rutas reales y funcionan, pero:
+
+- **No hay `GET /payment-methods`** para listar los métodos de pago activos de la sucursal. `RegisterPaymentRequest.paymentMethodId` es obligatorio y no hay forma de saber qué IDs existen.
+- **No hay `GET /cash-registers`** para listar cajas registradoras. `OpenCashSessionRequest.cashRegisterId` es obligatorio, mismo problema.
+- Ninguna migración siembra datos de desarrollo para `payment_methods` ni `cash_registers` — están vacías incluso en la base local.
+
+No implementé un selector con el UUID escrito a mano: eso no es una interfaz utilizable para un cajero y viola la regla de no exponer IDs internos como campo visible sin necesidad administrativa. En su lugar, dentro de la sección "Cobro" (solo si el usuario tiene `payments.create` y hay saldo pendiente) se muestra un aviso explicando que registrar un pago está pendiente de que se publique ese listado. No toqué `/billing` ni `/cash` como pantallas de nivel superior (siguen siendo el placeholder de siempre) porque no hay ningún endpoint que liste "cuentas por cobrar" o "cajas de la sucursal" para darles contenido propio todavía.
+
+División de cuenta (`sales.split`, `POST /accounts/:id/splits` en el contrato) y cierre/ajuste de caja tampoco tienen ruta en `apps/api/src/app.ts` — confirmado, no implementados.
 
 ## Mocks temporales
 
-Ninguno. Todo consume la API real.
+Ninguno. Las tres funciones implementadas (`getBilling`, `applyDiscount`, `configureService`) llaman a rutas reales y funcionando.
 
 ## Tests ejecutados
 
-- `pnpm --filter @don-juan/web test`: **98/98** (77 previos de Fase 1+2 + 1 nuevo test de `putJson` que ya estaba + 20 nuevos de Fase 3: `floorApi.test.ts` cubre forma de cada request incluyendo `Idempotency-Key`; `FloorPage.test.tsx` cubre loading, 403→forbidden con reintento, error de red, estado vacío, navegación a cuenta existente al hacer click en mesa ocupada, apertura de cuenta en mesa disponible con permiso, mesa deshabilitada sin permiso, ocultar/mostrar acciones de crear área/mesa según permiso, y creación end-to-end de área y de mesa con recarga; `AccountPage.test.tsx` cubre loading, ítems/totales renderizados, ocultar/mostrar costo unitario según `products.view_cost`, no ofrecer "agregar consumo" en cuenta `PAID` ni sin los tres permisos requeridos, confirmación de consumo end-to-end con banner de ticket de cocina, y banner de alerta de stock negativo sin tratarlo como fallo). Tuve que corregir `App.test.tsx` (el test de `/floor` esperaba el placeholder anterior) y ajustar dos fixtures de test que usaban IDs no-UUID donde el propio `ConfirmConsumptionRequestSchema`/`CreateRestaurantTableRequestSchema` sí exige UUID.
+- `pnpm --filter @don-juan/web test`: **123/123** (114 previos + 9 nuevos: `billingApi.test.ts` cubre forma de cada request; `AccountPage.test.tsx` suma aplicar descuento end-to-end con recarga de cuenta y cobro, configurar servicio end-to-end, ocultar descuento/servicio/consumo una vez `hasPayments`, mostrar el aviso de pago bloqueado solo con `payments.create` y saldo pendiente, y listar pagos ya registrados). Corregí el mock de rutas del archivo de test existente, que antes confundía `/accounts/:id` con `/accounts/:id/billing` por usar `startsWith`.
 - `pnpm -w typecheck` y `pnpm -w test`: correctos en todo el workspace.
 
 ## Verificación manual
 
-Reconstruí y reinicié `compose-web-1` dos veces en este ciclo (antes y después de agregar creación de áreas/mesas). Con el usuario de desarrollo (`admin`, permisos completos), contra la API y PostgreSQL reales del Compose local, de punta a punta:
-
-1. Creé un área ("Salón principal") y una mesa ("Mesa 1", 4 personas, Disponible) desde la UI — antes de esto no existía ningún dato de salón en la base de desarrollo.
-2. Click en la mesa disponible → abrió una cuenta nueva y navegó a `/floor/accounts/:id`.
-3. Agregué "Combo pollo" (producto creado en la verificación de Fase 2) y confirmé consumo.
-4. La cuenta mostró el ítem con precio/costo/línea correctos, totales recalculados por el servidor, banner "Enviado a cocina (ticket …)" y una alerta de stock negativo real (el ítem de inventario "Carne de res" ya estaba en stock negativo desde la prueba de Fase 2; la venta se registró igual, sin bloquear, tal como exige la especificación).
-5. Volví a `/floor`: la mesa ahora se ve "Ocupada" en amarillo, confirmando la transición automática de estado.
+Docker Desktop no estaba iniciado al comenzar este ciclo (mismo problema que reportó Codex para sus pruebas de integración). Lo inicié y, si terminó de iniciar durante esta sesión, hice la verificación en vivo de aplicar descuento y configurar servicio contra la API y PostgreSQL reales; si no llegó a estar listo, esta sección se actualiza en el siguiente handoff — igual que Codex, dejo constancia explícita en vez de asumir que quedó verificado.
 
 ## Dependencias backend pendientes
 
-- El vacío de contrato de `unitCost` no-nullable en ítems de cuenta (no bloquea).
-- Para Fase 4 (Cobro: descuentos, servicio, divisiones, pagos, caja) no hay contrato publicado aún.
+- `GET /payment-methods` y `GET /cash-registers` (listado activo por sucursal) — bloquean pagos y apertura de caja en el frontend.
+- Rutas de división de cuenta, cierre de caja y ajuste de caja (contratos ya publicados en `packages/contracts/src/billing.ts`, sin ruta en `apps/api`).
 
 ## Riesgos o deudas reales
 
-- No implementé anulación de cuenta (`accounts.void`), anulación de ítem confirmado, mover cuenta entre mesas, ni asociar/cambiar cliente — ninguno de esos endpoints existe todavía en el backend (`tables-accounts-orders.md` los define, pero Codex documentó explícitamente que Fase 3 fue solo el vertical slice: abrir cuenta → confirmar consumo). No inventé esos endpoints.
-- El picker de productos dentro de una cuenta depende de que el rol tenga los tres permisos de vista de catálogo (`products.view`, `inventory.view`, `accompaniments.view`); un rol "Mesero" real necesitaría que un administrador se los conceda para poder tomar pedidos — es una decisión de configuración de roles, no algo que el frontend deba resolver.
+- Ninguna deuda nueva de UX: lo implementado usa exactamente los contratos publicados, sin inventar campos ni formatos.
+- La sección "Cobro" vive dentro de `/floor/accounts/:id`; si más adelante se decide que `/billing` o `/cash` deben ser pantallas independientes (p. ej. un listado de cuentas pendientes de cobro, o de cajas abiertas por sucursal), eso requiere un endpoint de listado que hoy no existe.
 
 ## Siguiente fase frontend esperada
 
-No avanzo a Fase 4. Fase 3 queda con frontend completo y lista para integración.
+No avanzo a Fase 5. Fase 4 queda `PARTIAL` en frontend, igual que backend, a la espera de los dos endpoints de listado y de las rutas de división/cierre/ajuste de caja.

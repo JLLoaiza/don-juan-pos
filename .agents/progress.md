@@ -10,7 +10,7 @@ Estados usados: `PENDING` (no iniciado), `PARTIAL` (avance parcial, ver handoff)
 | Fase 1 | Identidad, sesión, contexto de sucursal y permisos | COMPLETE | COMPLETE (login, refresh, selector de sucursal, logout local, snapshot offline de auth) | - |
 | Fase 2 | Catálogo e inventario base | COMPLETE | COMPLETE (inventario, acompañamientos, productos y precio en `/catalog`) | - |
 | Fase 3 | Salón: áreas, mesas, cuentas, consumo | COMPLETE | COMPLETE (salón, cuenta y consumo en `/floor` y `/floor/accounts/:id`) | - |
-| Fase 4 | Cobro: descuentos, servicio, divisiones, pagos, caja | PARTIAL (pagos directos y apertura de caja) | PENDING (placeholders en `/billing`, `/cash`) | - |
+| Fase 4 | Cobro: descuentos, servicio, divisiones, pagos, caja | PARTIAL (pagos directos y apertura de caja) | PARTIAL (descuentos, servicio y snapshot de cobro en la cuenta; pagos y caja bloqueados por falta de listado de métodos/cajas) | - |
 | Fase 5 | Compras, gastos, Kardex, empleados | PENDING | PENDING (placeholders en `/procurement`, `/workforce`) | - |
 | Fase 6 | Sincronización Edge completa (outbox, pull, conflictos) | PENDING | PARTIAL (conectividad ONLINE/DEVICE_ONLY real; sin cola de comandos aún — ver `/sync`) | - |
 | Fase 7 | Reportes y operación a escala | PENDING | PENDING (placeholder en `/reports`) | - |
@@ -48,3 +48,7 @@ Frontend `COMPLETE` contra los contratos publicados por Codex: vista de salón a
 ## Nota backend — Fase 4 parcial (2026-09-07)
 
 Contratos publicados y backend disponible para snapshot de cobro, apertura de caja y pagos directos. Descuentos, servicio, divisiones, cierre y ajustes permanecen pendientes; ver .agents/handoffs/codex-latest.md.
+
+## Nota frontend — Fase 4 parcial (2026-09-07)
+
+Frontend `PARTIAL` contra lo que Codex publicó como rutas reales: dentro de `/floor/accounts/:id` se agregó una sección "Cobro" con el snapshot de cuenta (pagado, saldo pendiente, descuentos, servicio, historial de pagos), formulario para aplicar descuento (`sales.apply_discount`) y para configurar servicio (`sales.modify_service`); ambos se ocultan una vez `hasPayments` es verdadero, igual que el propio backend bloquea cambios comerciales tras el primer pago (también oculté "Agregar consumo" en ese caso, ya que el backend lo rechaza aunque la cuenta siga `OPEN`). Registrar un pago nuevo y abrir sesión de caja NO se implementaron: no existe ningún endpoint para listar métodos de pago activos ni cajas registradoras de la sucursal, así que no hay forma de ofrecer esos selectores sin inventar datos; se muestra un aviso explicando esto a quien tiene `payments.create`. Detalle completo en `.agents/handoffs/claude-latest.md`.
