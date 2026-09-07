@@ -137,3 +137,9 @@ No se adelanta `CONFIRM_PURCHASE`: compras son Fase 5. En Fase 2 el costo se fij
 **Estado.** Implementado, probado y verificado en vivo (editar margen de 60% a 50% recalculó el precio de venta correctamente y persistió con el mismo `PUT /catalog/products/:id` de siempre).
 
 **Estado.** Frontend de Fase 3 completo, listo para integración. No bloquea ni fue bloqueado por lo anterior.
+
+## 2026-09-07 — Corrección de `unitCost` nullable verificada; Fase 4 sin contrato todavía
+
+**Verificación.** El cambio de Codex en `cd16e36` (`AccountItemSnapshot.unitCost` ahora nullable, redactado sin `products.view_cost`) no requirió ningún cambio en frontend: `apps/web/src/features/floor/AccountPage.tsx` ya formateaba `unitCost` con una función que trata `null` como "—" y ya ocultaba la columna completa sin el permiso. `pnpm -w typecheck` y `pnpm --filter @don-juan/web test` (114/114) confirman que sigue correcto. El vacío que documenté para Fase 3 queda cerrado.
+
+**Fase 4.** Revisé `packages/contracts/src`, `apps/api/src` e `infra/db/migrations` buscando algo de Cobro (descuentos, servicio, divisiones, pagos, caja) — no existe todavía ningún archivo, ruta ni migración para esto. No hay contrato que implementar; no se inventó nada. Frontend queda a la espera de que Codex/ChatGPT publiquen `packages/contracts` para Fase 4 antes de tocar `/billing` o `/cash`.
