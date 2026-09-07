@@ -1,21 +1,12 @@
 import { z } from "zod";
 
 export const UuidSchema = z.string().uuid();
-
 export const LoginRequestSchema = z.object({
-  companyId: UuidSchema,
   username: z.string().trim().min(1).max(100),
   password: z.string().min(1).max(512),
 });
 export const RefreshRequestSchema = z.object({ refreshToken: z.string().min(20).max(512) });
 export const SetActiveBranchRequestSchema = z.object({ branchId: UuidSchema });
-
-export const CompanyContextSchema = z.object({
-  id: UuidSchema,
-  name: z.string(),
-  currency: z.string().length(3),
-  timezone: z.string(),
-});
 export const BranchContextSchema = z.object({
   id: UuidSchema,
   name: z.string(),
@@ -24,7 +15,6 @@ export const BranchContextSchema = z.object({
 });
 export const AuthContextSchema = z.object({
   user: z.object({ id: UuidSchema, displayName: z.string() }),
-  company: CompanyContextSchema,
   branches: z.array(BranchContextSchema).min(1),
   activeBranch: BranchContextSchema.nullable(),
   permissions: z.array(z.string()).readonly(),
@@ -36,7 +26,6 @@ export const SessionTokensSchema = z.object({
   refreshTokenExpiresAt: z.string().datetime(),
 });
 export const AuthenticatedContextSchema = AuthContextSchema.extend({ session: SessionTokensSchema });
-
 export type LoginRequest = z.infer<typeof LoginRequestSchema>;
 export type RefreshRequest = z.infer<typeof RefreshRequestSchema>;
 export type SetActiveBranchRequest = z.infer<typeof SetActiveBranchRequestSchema>;

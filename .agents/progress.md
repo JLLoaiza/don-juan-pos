@@ -20,3 +20,7 @@ Estados usados: `PENDING` (no iniciado), `PARTIAL` (avance parcial, ver handoff)
 - Contratos consumidos: `POST /auth/login`, `POST /auth/refresh`, `GET /me/context`, `POST /me/active-branch` (todos de `@don-juan/contracts`, ya publicados por Codex).
 - Verificado en vivo contra la API real (Compose) con el usuario de desarrollo (`admin` / sucursal única "Don Juan Centro"): login, persistencia de sesión tras recarga, selector de sucursal (solo texto para 1 sucursal), logout, manejo de 401/red.
 - Detalle completo en `.agents/handoffs/claude-latest.md`.
+
+## Nota backend — corrección de contexto (2026-09-07)
+
+Fase 1 sigue `COMPLETE`. El contrato público dejó de requerir/exponer compañía: login por credenciales y selección exclusiva de `branch_id`; la compañía se deriva internamente desde sesión y usuario. Ver `.agents/handoffs/codex-latest.md`.

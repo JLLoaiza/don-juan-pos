@@ -24,6 +24,9 @@ describeIntegration("PostgreSQL migrations", () => {
       "0003_printing_model.sql",
       "0007_sync_operation_model.sql",
       "0008_concurrency_revisions.sql",
+      "0009_identity_access.sql",
+      "0010_identity_initial_data.sql",
+      "0011_development_identity_seed.sql",
     ]);
 
     const integrity = await pool.query<{ index_exists: string | null; version_exists: string | null }>(`

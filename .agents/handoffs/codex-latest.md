@@ -1,48 +1,31 @@
 # Handoff — Codex
 
-## Fase 1 — identidad y contexto de sucursal
+## Corrección de Fase 1 — compañía interna, sucursal pública
 
-Implementada y verificada contra PostgreSQL mediante Compose.
+La Fase 1 continúa completa. Se corrigió el contrato para que la compañía sea tenancy interno y la única selección operativa del cliente sea una sucursal.
 
-### Contratos ya disponibles para Claude
+### Breaking change para Claude
 
-Desde `@don-juan/contracts`:
+- `POST /auth/login` ahora recibe exactamente `{ username, password }`. Se eliminó `companyId`.
+- `AuthenticatedContext` y `AuthContext` ya no incluyen `company`. Conservan `user`, `branches`, `activeBranch`, `permissions` y, cuando aplica, `session`.
+- `POST /me/active-branch` sigue recibiendo solamente `{ branchId }`.
 
-- `POST /auth/login` recibe `{ companyId, username, password }` y devuelve `AuthenticatedContext`.
-- `POST /auth/refresh` recibe `{ refreshToken }` y devuelve un `AuthenticatedContext` con refresh rotado.
-- `GET /me/context` requiere `Authorization: Bearer <accessToken>` y devuelve `AuthContext`.
-- `POST /me/active-branch` requiere el mismo bearer y recibe `{ branchId }`; devuelve el contexto recalculado.
+No envíes `company_id` ni lo uses para construir contexto, seleccionar sede o autorizar una operación. El backend obtiene la compañía desde el usuario de la sesión.
 
-`AuthContext` expone `user`, `company`, `branches`, `activeBranch` (puede ser `null` cuando hay más de una sucursal y ninguna seleccionada) y `permissions` como lista plana. Cada sucursal incluye su `settings` JSON.
+### Reglas vigentes
 
-### Semántica de seguridad
-
-- Access token JWT HMAC de 15 minutos; refresh opaco, hasheado, persistido y rotado en transacción.
-- Cada endpoint protegido vuelve a comprobar sesión, compañía/usuario activos, sucursal accesible y permisos actuales desde PostgreSQL. Desactivar usuario/compañía o revocar una sucursal toma efecto inmediatamente.
-- Los roles globales (`branch_id = NULL`) aplican únicamente dentro de las sucursales presentes en `user_branch_access`; roles y accesos entre compañías se rechazan también por triggers SQL.
-
-### Datos de desarrollo
-
-Compose deja un acceso de desarrollo:
-
-- companyId: `00000000-0000-7000-8000-000000000001`
-- username: `admin`
-- password: `ChangeMe!123`
-
-Es exclusivamente bootstrap local. Producción debe proporcionar `AUTH_JWT_SECRET` seguro y reemplazar/desactivar ese usuario tras aprovisionamiento.
-
-### Cambios de migración
-
-- `0009_identity_access.sql`: rol global, acceso a sucursal y sesión revocable.
-- `0010_identity_initial_data.sql`: catálogo inicial de permisos.
-- `0011_development_identity_seed.sql`: empresa/sucursal/admin de desarrollo, separado para conservar inmutables las migraciones ya aplicadas.
+- Una sola sucursal accesible se selecciona y persiste automáticamente al iniciar sesión.
+- Varias sucursales accesibles devuelven `activeBranch: null` hasta que el cliente ejecute `POST /me/active-branch` con el `branchId` elegido.
+- El cambio de sede resuelve usuario y compañía desde el bearer token, exige que la sede pertenezca a esa compañía y que exista `user_branch_access`; ambos fallos son `403`.
+- La consulta de credenciales rechaza un resultado ambiguo entre compañías sin revelar cuál tenancy coincide.
 
 ### Verificación
 
-- `pnpm build` correcto.
-- `pnpm test` correcto: 56 pruebas; 2 de integración PostgreSQL se omiten si no se provee `DATABASE_URL_TEST`.
-- Compose reconstruido y migrado. Smoke test real `login → /me/context` correcto (Centro, 9 permisos).
+- Compilación completa del workspace: correcta.
+- Pruebas API: correctas.
+- Pruebas PostgreSQL de identidad: 4 correctas (sede única automática, multisedes, sede de otra compañía prohibida y sede propia sin acceso prohibida).
+- Smoke test HTTP real: `POST /auth/login` sin compañía seguido de `GET /me/context`; no expone `company` y selecciona `CENTRO` automáticamente para el usuario de desarrollo.
 
-### Próximo backend
+### Scope
 
-Fase 2: catálogo e inventario base, empezando por contratos antes de persistencia. Claude ya puede avanzar con login/contexto/selector de sucursal contra las rutas reales o mocks con estos esquemas.
+No se modificaron `companies` ni `company_id` en PostgreSQL y no se avanzó a Fase 2.
