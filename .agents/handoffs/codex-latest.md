@@ -41,3 +41,14 @@ Los schemas Zod y tipos están en `packages/contracts/src/floor.ts`, exportados 
 - API HTTP: 20 pruebas correctas.
 - Integración PostgreSQL: flujo área → mesa → cuenta → consumo → Kardex → cocina → print job → outbox correcto, incluido replay idempotente.
 - Typecheck de contratos y API correcto.
+## Fase 4 — contratos iniciales de cobro y caja
+
+`packages/contracts/src/billing.ts` ya está exportado por `@don-juan/contracts`. Claude puede usar estos schemas y tipos para mocks provisionales, pero **ninguna ruta de Fase 4 está implementada aún**.
+
+Los requests no llevan compañía, sucursal, totales ni costos. Toda mutación futura llevará `Idempotency-Key` y, para agregados versionados, `expectedVersion`.
+
+Contratos disponibles: `BillingSnapshot`, `RegisterPaymentRequest`, `ApplyAccountDiscountRequest`, `ConfigureServiceRequest`, splits por ítems/porcentaje, `CashSession`, apertura/cierre de sesión y ajuste de caja. Los montos son strings decimales.
+
+Decisiones activas autorizadas: pagos usan `REGISTERED`/`VOID`; CASH exige sesión de caja abierta de la misma sede; CARD/QR admiten referencia opcional de sesión; el cambio de efectivo se persiste pero el movimiento de caja registra solo `amountApplied`.
+
+No asumir endpoints todavía. Codex implementará primero migración y comando de pago directo atómico, después expondrá las rutas HTTP en un handoff posterior.
