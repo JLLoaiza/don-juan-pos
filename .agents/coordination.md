@@ -143,3 +143,17 @@ No se adelanta `CONFIRM_PURCHASE`: compras son Fase 5. En Fase 2 el costo se fij
 **Verificación.** El cambio de Codex en `cd16e36` (`AccountItemSnapshot.unitCost` ahora nullable, redactado sin `products.view_cost`) no requirió ningún cambio en frontend: `apps/web/src/features/floor/AccountPage.tsx` ya formateaba `unitCost` con una función que trata `null` como "—" y ya ocultaba la columna completa sin el permiso. `pnpm -w typecheck` y `pnpm --filter @don-juan/web test` (114/114) confirman que sigue correcto. El vacío que documenté para Fase 3 queda cerrado.
 
 **Fase 4.** Revisé `packages/contracts/src`, `apps/api/src` e `infra/db/migrations` buscando algo de Cobro (descuentos, servicio, divisiones, pagos, caja) — no existe todavía ningún archivo, ruta ni migración para esto. No hay contrato que implementar; no se inventó nada. Frontend queda a la espera de que Codex/ChatGPT publiquen `packages/contracts` para Fase 4 antes de tocar `/billing` o `/cash`.
+
+## 2026-09-07 — Decisiones necesarias antes de contratos de Fase 4
+
+**Contexto.** Fase 4 une descuentos, servicio, divisiones, pagos y caja en una única frontera transaccional. Claude trabaja en paralelo en frontend, por lo que los contratos no se publicarán hasta resolver estas ambigüedades.
+
+1. **Estado de pago.** El esquema/migración histórica usa `REGISTERED`/`VOID`, mientras que la especificación de billing recomienda `CONFIRMED`/`VOID`. Propuesta: conservar `REGISTERED` como estado persistido y público en esta fase para evitar migración transversal; documentar su semántica como pago financiero confirmado.
+2. **Impuestos después de descuentos.** Los `account_items` de Fase 3 ya guardan `tax_total` histórico. Falta decidir cómo prorratear/recalcular el impuesto cuando se aplica un descuento de cuenta. Propuesta: prorratear determinísticamente el descuento entre ítems confirmados y recalcular impuesto por línea con el `tax_rate_snapshot`, conciliando el residuo de redondeo a la última línea por ID.
+3. **Anulación de cuenta/ítem.** El plan de Fase 4 exige compensación de consumo, pero la especificación de billing se concentra en pagos y no fija endpoint/permiso/efecto de cocina para la anulación de cuentas abiertas. Requiere decisión antes de publicar ese comando; no se implementará como borrado ni con cálculo de receta actual.
+4. **Contexto de caja para pagos no efectivo.** CASH debe exigir una sesión OPEN explícita de la misma sede. Para CARD/QR la especificación admite referencia opcional; propuesta: aceptar `cashSessionId` opcional para conciliación y hacerlo obligatorio solo para CASH.
+5. **Efectivo recibido y cambio.** Un pago CASH puede tener `cashReceived > amountApplied`. Propuesta: persistir ambos valores/su cambio en el pago, pero crear movimiento de caja únicamente por `amountApplied`; nunca por el efectivo entregado físicamente.
+
+**Invariantes ya no ambiguas.** Todo pago debe bloquear cuenta (y split si aplica), recalcular saldo autoritativo, ser idempotente, evitar sobrepago, y confirmar en el mismo commit pago, movimiento de caja si aplica, cuenta `PAID`/liberación de mesa, recibo, auditoría y outbox. Ningún worker participa en esa consistencia.
+
+**Estado.** Las propuestas fueron autorizadas por el usuario el 2026-09-07. Codex las aplicará en contratos/migraciones de Fase 4; Claude puede usar mocks provisionales hasta que cada ruta se publique en el handoff.

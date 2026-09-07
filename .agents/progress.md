@@ -10,7 +10,7 @@ Estados usados: `PENDING` (no iniciado), `PARTIAL` (avance parcial, ver handoff)
 | Fase 1 | Identidad, sesión, contexto de sucursal y permisos | COMPLETE | COMPLETE (login, refresh, selector de sucursal, logout local, snapshot offline de auth) | - |
 | Fase 2 | Catálogo e inventario base | COMPLETE | COMPLETE (inventario, acompañamientos, productos y precio en `/catalog`) | - |
 | Fase 3 | Salón: áreas, mesas, cuentas, consumo | COMPLETE | COMPLETE (salón, cuenta y consumo en `/floor` y `/floor/accounts/:id`) | - |
-| Fase 4 | Cobro: descuentos, servicio, divisiones, pagos, caja | PENDING | PENDING (placeholders en `/billing`, `/cash`) | - |
+| Fase 4 | Cobro: descuentos, servicio, divisiones, pagos, caja | PARTIAL (pagos directos y apertura de caja) | PENDING (placeholders en `/billing`, `/cash`) | - |
 | Fase 5 | Compras, gastos, Kardex, empleados | PENDING | PENDING (placeholders en `/procurement`, `/workforce`) | - |
 | Fase 6 | Sincronización Edge completa (outbox, pull, conflictos) | PENDING | PARTIAL (conectividad ONLINE/DEVICE_ONLY real; sin cola de comandos aún — ver `/sync`) | - |
 | Fase 7 | Reportes y operación a escala | PENDING | PENDING (placeholder en `/reports`) | - |
@@ -44,3 +44,7 @@ Backend `COMPLETE`: contratos de salón, mesas, cuenta y confirmación transacci
 ## Nota frontend — Fase 3 (2026-09-07)
 
 Frontend `COMPLETE` contra los contratos publicados por Codex: vista de salón agrupada por área con mesas coloreadas por estado (disponible/ocupada/reservada), creación de áreas y mesas (`dining_areas.create`/`tables.create`), abrir cuenta desde una mesa disponible/reservada, vista de cuenta con ítems/adicionales/totales, y confirmación de consumo (selección de productos, adicionales configurados con opción "sin costo", notas) que muestra el ticket de cocina y las alertas de stock negativo devueltas por el servidor sin bloquear la venta. Verificado en vivo end-to-end contra API+PostgreSQL reales: crear área → crear mesa → abrir cuenta → confirmar consumo → mesa pasa a "Ocupada" → alerta de stock negativo mostrada correctamente. Un vacío de contrato detectado (no bloquea, ver `.agents/coordination.md`): `AccountItemSnapshotSchema.unitCost` no es nullable y el backend siempre lo envía, a diferencia de `products.view_cost` en catálogo; el frontend oculta la columna igualmente sin el permiso pero el dato ya viaja en la respuesta HTTP. Detalle completo en `.agents/handoffs/claude-latest.md`.
+
+## Nota backend — Fase 4 parcial (2026-09-07)
+
+Contratos publicados y backend disponible para snapshot de cobro, apertura de caja y pagos directos. Descuentos, servicio, divisiones, cierre y ajustes permanecen pendientes; ver .agents/handoffs/codex-latest.md.

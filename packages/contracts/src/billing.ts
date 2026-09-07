@@ -53,6 +53,7 @@ export const OpenCashSessionRequestSchema = z.object({ cashRegisterId: EntityIdS
 export const CashAdjustmentRequestSchema = z.object({ expectedVersion: PositiveVersionSchema, amount: PositiveMoneySchema, reason: z.string().trim().min(1).max(2_000) });
 export const CloseCashSessionRequestSchema = z.object({ expectedVersion: PositiveVersionSchema, countedCash: MoneySchema, notes: NotesSchema, printReceipt: z.boolean().default(true) });
 
+export type PaymentSnapshot = z.infer<typeof PaymentSnapshotSchema>;
 export type BillingSnapshot = z.infer<typeof BillingSnapshotSchema>;
 export type RegisterPaymentRequest = z.infer<typeof RegisterPaymentRequestSchema>;
 export type ApplyAccountDiscountRequest = z.infer<typeof ApplyAccountDiscountRequestSchema>;
