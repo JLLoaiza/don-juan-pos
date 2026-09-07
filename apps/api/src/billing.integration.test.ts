@@ -46,7 +46,7 @@ describeIntegration("billing payment transaction", () => {
     expect(consistency.rows[0]).toEqual({ account_status: "PAID", payment_count: 1, cash_sale: "20.00", receipt_status: "FAILED", outbox_count: 1 });
   });
   it("lists only current-branch registers, open sessions and active payment methods", async () => {
-    const session=await billing.openCashSession(actor,randomUUID(),{cashRegisterId,openingAmount:"0",notes:null});
+    const session=(await billing.openCashSessionForRegister(actor,cashRegisterId)) ?? await billing.openCashSession(actor,randomUUID(),{cashRegisterId,openingAmount:"0",notes:null});
     const registers=await billing.cashRegisters(actor); const open=await billing.openCashSessionForRegister(actor,cashRegisterId); const foreign=await billing.openCashSessionForRegister(actor,foreignRegisterId); const methods=await billing.paymentMethods(actor);
     expect(registers.cashRegisters).toHaveLength(1); expect(registers.cashRegisters[0]).toMatchObject({id:cashRegisterId,openSession:{id:session.id}});
     expect(open?.id).toBe(session.id); expect(foreign).toBeNull(); expect(methods.paymentMethods).toEqual([{id:cashMethodId,name:"Efectivo",type:"CASH",active:true}]);

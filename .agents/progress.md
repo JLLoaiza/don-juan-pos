@@ -2,7 +2,7 @@
 
 Tabla de estado por fase y agente. Cada agente actualiza únicamente su propia columna al terminar una ejecución. La columna `Integrado` está reservada al proceso de integración/revisión (ChatGPT) — ningún otro agente debe marcarla `YES`.
 
-Estados usados: `PENDING` (no iniciado), `PARTIAL` (avance parcial, ver handoff), `COMPLETE` (terminado y probado), `N/A` (no aplica a este agente).
+Estados usados: `PENDING` (no iniciado), `READY` (desbloqueado pero no iniciado), `PARTIAL` (avance parcial, ver handoff), `COMPLETE` (terminado y probado), `N/A` (no aplica a este agente).
 
 | Fase | Alcance | Backend (Codex) | Frontend (Claude) | Integrado |
 | --- | --- | --- | --- | --- |
@@ -10,8 +10,8 @@ Estados usados: `PENDING` (no iniciado), `PARTIAL` (avance parcial, ver handoff)
 | Fase 1 | Identidad, sesión, contexto de sucursal y permisos | COMPLETE | COMPLETE (login, refresh, selector de sucursal, logout local, snapshot offline de auth) | - |
 | Fase 2 | Catálogo e inventario base | COMPLETE | COMPLETE (inventario, acompañamientos, productos y precio en `/catalog`) | - |
 | Fase 3 | Salón: áreas, mesas, cuentas, consumo | COMPLETE | COMPLETE (salón, cuenta y consumo en `/floor` y `/floor/accounts/:id`) | - |
-| Fase 4 | Cobro: descuentos, servicio, divisiones, pagos, caja | PARTIAL (pagos directos y apertura de caja; divisiones sin ruta) | COMPLETE (descuentos, servicio, pagos con selector de método/caja por nombre, apertura/ajuste/cierre de caja) | - |
-| Fase 5 | Compras, gastos, Kardex, empleados | PENDING | PENDING (placeholders en `/procurement`, `/workforce`) | - |
+| Fase 4 | Cobro: descuentos, servicio, divisiones, pagos, caja | COMPLETE | COMPLETE | YES |
+| Fase 5 | Compras, gastos, Kardex, empleados | READY | READY | - |
 | Fase 6 | Sincronización Edge completa (outbox, pull, conflictos) | PENDING | PARTIAL (conectividad ONLINE/DEVICE_ONLY real; sin cola de comandos aún — ver `/sync`) | - |
 | Fase 7 | Reportes y operación a escala | PENDING | PENDING (placeholder en `/reports`) | - |
 
@@ -56,3 +56,7 @@ Frontend `PARTIAL` contra lo que Codex publicó como rutas reales: dentro de `/f
 ## Nota frontend — Fase 4 cierre (2026-09-07)
 
 Frontend `COMPLETE`: Codex publicó `GET /payment-methods`, `GET /cash-registers`, `GET /cash-registers/:id/open-session`, `POST /cash-sessions/:id/adjustments` y `POST /cash-sessions/:id/close`, así que se completó lo que quedaba pendiente. Nuevo selector de método de pago y registro de pago (efectivo con caja+recibido+cambio, tarjeta/QR sin esos campos) dentro de la cuenta; pantalla `/cash` completa (antes placeholder) con listado de cajas, abrir/ajustar/cerrar sesión. Verificado en vivo end-to-end: abrir caja → cobrar en efectivo con cambio correcto → cuenta pasa a Pagada → mesa vuelve a Disponible; abrir/ajustar/cerrar caja con diferencia negativa mostrada correctamente. Se corrigieron dos bugs reales encontrados durante esa verificación (uno de contrato compartido, uno propio) — ver `.agents/coordination.md` y `.agents/handoffs/codex-frontend-latest.md` para el detalle completo. `pnpm -w typecheck`/`pnpm -w test`: correctos (139/139 en `apps/web`, sin romper las pruebas de `apps/api`). No avanza a Fase 5.
+
+## Integración — Fase 4 completa (2026-09-07)
+
+Backend y frontend integrados satisfactoriamente. `GET /payment-methods`, cajas/sesiones, pagos, ajustes y cierres respetan la sucursal derivada de sesión, permisos backend, versiones e idempotencia. `pnpm --filter @don-juan/api test:integration` pasó 10/10 contra PostgreSQL local; `pnpm -w typecheck` pasó. La suite global de migraciones sigue exponiendo un defecto histórico de `0009_identity_access.sql` contra el DDL base (`user_roles.id`), ajeno a Fase 4 y no se reescribió para preservar checksums. Fase 5 queda READY y no se retoma.

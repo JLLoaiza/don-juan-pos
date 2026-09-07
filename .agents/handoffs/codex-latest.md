@@ -98,3 +98,8 @@ El seed de desarrollo `0020_development_cash_seed.sql` crea únicamente para la 
 Para cerrar ajustes y cierres, Claude debe cargar `GET /cash-registers` y seleccionar `openSession`; después usa `POST /cash-sessions/:id/adjustments` o `POST /cash-sessions/:id/close` con la `version` de esa sesión e `Idempotency-Key`. También puede cargar `GET /payment-methods` para el selector de cobro. Todas las rutas trabajan sobre la sucursal activa de la sesión.
 
 Verificación: typecheck API correcto y 30 pruebas HTTP correctas. La prueba PostgreSQL cubre cajas, sesión abierta, métodos activos y que una sucursal no pueda leer la caja ni métodos de otra; está lista para ejecutarse cuando Docker Desktop vuelva a estar disponible.
+## Integración Fase 4 — aprobada
+
+Validación realizada contra PostgreSQL local: 10/10 pruebas de integración API correctas, incluidos métodos de pago activos, cajas y sesión abierta aisladas por sucursal, pago CASH con cambio y operaciones idempotentes. `pnpm -w typecheck` pasó y el frontend tiene 139 pruebas correctas; no conserva mocks para las rutas reales de Fase 4 y refresca sus consultas al cambiar de sucursal. Fase 5 queda READY, sin retomar su implementación.
+
+Nota: la suite global de migraciones detecta un defecto anterior en `0009_identity_access.sql` frente al DDL base (columna `user_roles.id`); no pertenece a Fase 4 y no se modificó una migración potencialmente aplicada.
