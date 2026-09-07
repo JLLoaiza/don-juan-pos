@@ -42,4 +42,28 @@ describe("createHttpClient", () => {
 
     await expect(client.getJson("/thing", schema)).rejects.toBeDefined();
   });
+
+  it("posts a JSON body with a content-type header and any extra headers", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ value: "ok" }), { status: 200 }));
+    const client = createHttpClient({ baseUrl: "http://api.local", fetchImpl: fetchImpl as unknown as typeof fetch });
+
+    await client.postJson("/thing", schema, { body: { a: 1 }, headers: { authorization: "Bearer t" } });
+
+    expect(fetchImpl).toHaveBeenCalledWith("http://api.local/thing", {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json", authorization: "Bearer t" },
+      body: JSON.stringify({ a: 1 }),
+    });
+  });
+
+  it("posts without a body when none is given", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ value: "ok" }), { status: 200 }));
+    const client = createHttpClient({ baseUrl: "http://api.local", fetchImpl: fetchImpl as unknown as typeof fetch });
+
+    await client.postJson("/thing", schema);
+
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.body).toBeUndefined();
+    expect(init.headers).toEqual({ accept: "application/json" });
+  });
 });
