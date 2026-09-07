@@ -81,13 +81,14 @@ describe("App", () => {
     await waitFor(() => expect(screen.getAllByText("ok")).toHaveLength(2));
   });
 
-  it("renders a feature placeholder for /floor for a returning session", async () => {
+  it("renders the real floor for /floor for a returning session", async () => {
     seedAuthenticatedSession();
     mockHealthy();
+    getJsonMock.mockResolvedValue({ diningAreas: [], tables: [] });
     renderApp(["/floor"]);
 
     expect(await screen.findByRole("heading", { name: "Salón" })).toBeInTheDocument();
-    expect(screen.getByText(/Aún no implementado/)).toBeInTheDocument();
+    expect(screen.getByText(/Aún no hay áreas ni mesas configuradas/)).toBeInTheDocument();
   });
 
   it("shows the device-only banner when the health check fails", async () => {
