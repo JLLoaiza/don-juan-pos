@@ -23,6 +23,7 @@ describeIntegration("local-first Edge to Cloud replication", () => {
 
   beforeAll(async () => {
     local = new Pool({ connectionString: localUrl }); cloud = new Pool({ connectionString: cloudUrl });
+    await local.query("DELETE FROM edge_local_identity");
     await provision(local, "local"); await provision(cloud, "cloud");
     localCatalog = new CatalogService(local); edgeReplication = new ReplicationService(local, "edge"); cloudReplication = new ReplicationService(cloud, "cloud", 60 * 60);
     const enrollment = await cloudReplication.createEnrollment(actor, "Servidor Local de Prueba");
@@ -46,9 +47,9 @@ describeIntegration("local-first Edge to Cloud replication", () => {
   });
 
   it("refreshes Cloud-managed credentials and branch permissions for later offline login", async () => {
-    const roleId = randomUUID(); const permissionId = randomUUID();
+    const roleId = randomUUID();
     await cloud.query("UPDATE users SET password_hash=crypt('cloud-synced-pass',gen_salt('bf',4)) WHERE id=$1", [userId]);
-    await cloud.query("INSERT INTO permissions(id,key,name,module) VALUES($1,'replication.status.view','View replication','replication')", [permissionId]);
+    const permission = await cloud.query<{ id: string }>("SELECT id FROM permissions WHERE key='replication.status.view'"); const permissionId = permission.rows[0]!.id;
     await cloud.query("INSERT INTO roles(id,company_id,name) VALUES($1,$2,'Local replica viewer')", [roleId,companyId]);
     await cloud.query("INSERT INTO role_permissions(role_id,permission_id) VALUES($1,$2)", [roleId,permissionId]);
     await cloud.query("INSERT INTO user_roles(id,user_id,role_id,branch_id) VALUES($1,$2,$3,$4)", [randomUUID(),userId,roleId,branchId]);

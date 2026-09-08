@@ -184,3 +184,18 @@ Claude puede construir UI de estado/salud de réplica sobre los contratos cuando
 Los contratos que sí constituyen el carril local-first son `packages/contracts/src/replication.ts` y las rutas `replication/*`; aun así quedan **bloqueados para consumo frontend** hasta validar la instalación Edge+Cloud real con dos PostgreSQL y migración `0027`.
 
 Comprobado de nuevo el 2026-09-08: Docker Desktop continúa sin daemon (`dockerDesktopLinuxEngine` no disponible), por lo que no se ejecutaron enrolamiento, aislamiento, operación WAN-off/outbox, ACK/reintento, snapshot de identidad ni última sincronización sobre instalaciones separadas. Fase 6 no se marca integrada, no se libera a Claude y no avanza a Fase 7.
+## Validación final Edge+Cloud — 2026-09-08
+
+Esta actualización **anula solamente** los párrafos anteriores que indicaban que Docker no estaba disponible o que el carril local-first estaba bloqueado por falta de validación. Conserva vigente la prohibición de usar el antiguo `/sync/*` como contrato frontend.
+
+Se levantaron instalaciones PostgreSQL independientes `edge` (puerto 5433) y `cloud` (puerto 5434) con `infra/compose/docker-compose.local-first.yml`. Ambas aplicaron desde cero `0000` y migraciones `0001`–`0027`, incluida `0027_local_first_edge_replication.sql`; una segunda ejecución en ambas respondió `Database is current.`
+
+Resultados reales:
+
+- Integraciones PostgreSQL relevantes: **19/19** (`auth`, catálogo, salón, pagos, compras, personal, sync anterior y `replication.integration`).
+- `replication.integration`: **3/3** — dos clientes usan el PostgreSQL Edge durante WAN simulada, outbox durable, enrolamiento de servidor, entrega/retry `DUPLICATE`, rechazo cross-branch, proyección/última sincronización Cloud y login offline después de sincronizar hash/rol/permiso.
+- HTTP de límites local-first: **2/2**.
+- Worker: **6/6**; typecheck global correcto.
+- La suite completa conserva un fallo histórico no relacionado en `workforce.date-mapping.integration`: la aserción fija el día `2026-09-07` mientras la fecha de ejecución es `2026-09-08`. No se modificó dentro de Fase 6.
+
+**Backend Fase 6 queda listo para integración frontend únicamente contra `packages/contracts/src/replication.ts` y rutas `replication/*`.** Claude puede implementar estado/consulta de réplica sobre esos contratos. No debe implementar DEVICE_ONLY, IndexedDB o PULL contra las rutas históricas `/sync/*` sin una decisión/contrato local-first posterior. Fase 7 no se inició.
