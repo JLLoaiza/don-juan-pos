@@ -13,7 +13,7 @@ Estados usados: `PENDING` (no iniciado), `READY` (desbloqueado pero no iniciado)
 | Fase 4 | Cobro: descuentos, servicio, divisiones, pagos, caja | COMPLETE | COMPLETE | YES |
 | Fase 5 | Compras, gastos, Kardex, empleados | COMPLETE | COMPLETE | YES |
 | Fase 6 | Local-first: servidor por sede + réplica cloud (`replication/*`) | COMPLETE | COMPLETE (`/replication`: estado y consulta de réplica reales, selector multi-sede en Cloud y `/health` público en Edge, verificados en vivo tras `ac5181e`) | - |
-| Fase 7 | Reportes y operación a escala | PENDING | PENDING (placeholder en `/reports`) | - |
+| Fase 7 | Reportes y operación a escala | COMPLETE (Cloud read-only: dashboard, ventas, productos y export CSV) | PENDING (placeholder en `/reports`) | - |
 
 ## Notas de la fase actual (Fase 1, frontend)
 

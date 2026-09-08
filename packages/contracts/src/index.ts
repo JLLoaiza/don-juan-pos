@@ -14,3 +14,5 @@ export * from './workforce.js';
 export * from './sync.js';
 
 export * from "./replication.js";
+
+export * from "./reports.js";

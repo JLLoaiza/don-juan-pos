@@ -1,0 +1,14 @@
+import { z } from "zod";
+const Id = z.string().uuid();
+const Decimal = z.string().regex(/^-?\d+(?:\.\d+)?$/);
+const DateTime = z.string().datetime();
+export const ReportRangeQuerySchema = z.object({ from: DateTime.optional(), to: DateTime.optional(), page: z.coerce.number().int().min(1).max(10000).default(1), pageSize: z.coerce.number().int().min(1).max(200).default(50) }).refine((v) => !v.from || !v.to || v.from < v.to, { message: "from must be before to" });
+export const ReportFreshnessSchema = z.object({ branchId: Id, lastReceivedAt: DateTime.nullable(), stale: z.boolean(), source: z.literal("CONFIRMED_CLOUD_REPLICA") });
+export const ReportPageSchema = z.object({ page: z.number().int(), pageSize: z.number().int(), total: z.number().int().nonnegative() });
+export const SalesReportRowSchema = z.object({ paymentId: Id, accountId: Id, receivedAt: DateTime, paymentMethodName: z.string(), paymentMethodType: z.enum(["CASH", "CARD", "QR"]), amount: Decimal });
+export const SalesReportSchema = z.object({ freshness: ReportFreshnessSchema, page: ReportPageSchema, totals: z.object({ payments: z.number().int().nonnegative(), collected: Decimal }), rows: z.array(SalesReportRowSchema) });
+export const ProductPerformanceRowSchema = z.object({ productId: Id, productName: z.string(), quantity: Decimal, revenue: Decimal, historicalCost: Decimal.optional(), grossProfit: Decimal.optional() });
+export const ProductPerformanceReportSchema = z.object({ freshness: ReportFreshnessSchema, page: ReportPageSchema, totals: z.object({ products: z.number().int().nonnegative(), revenue: Decimal, historicalCost: Decimal.optional(), grossProfit: Decimal.optional() }), rows: z.array(ProductPerformanceRowSchema) });
+export const DashboardReportSchema = z.object({ freshness: ReportFreshnessSchema, sales: z.object({ collected: Decimal, payments: z.number().int().nonnegative(), averageTicket: Decimal }), profitability: z.object({ historicalCost: Decimal.optional(), grossProfit: Decimal.optional(), grossMarginPercent: Decimal.optional() }), operations: z.object({ openAccounts: z.number().int().nonnegative(), occupiedTables: z.number().int().nonnegative() }) });
+export const InventoryReportSchema = z.object({ freshness: ReportFreshnessSchema, page: ReportPageSchema, rows: z.array(z.object({ inventoryItemId: Id, movement: z.string(), occurredAt: DateTime, quantity: Decimal, unitCost: Decimal.optional() })) });
+export type ReportRangeQuery = z.infer<typeof ReportRangeQuerySchema>;

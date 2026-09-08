@@ -8,6 +8,7 @@ import { ProcurementService } from "./procurement.js";
 import { WorkforceService } from "./workforce.js";
 import { SyncService } from "./sync.js";
 import { ReplicationService, type DeploymentMode } from "./replication.js";
+import { ReportsService } from "./reports.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required.");
@@ -22,7 +23,7 @@ const corsOrigins = (process.env.CORS_ORIGINS ?? "http://localhost:5173").split(
 const pool = createPool(databaseUrl);
 const replication = new ReplicationService(pool, deploymentMode);
 if (deploymentMode === "edge" && edgeServerId && edgeBranchId) await replication.configureLocalIdentity(edgeServerId, edgeBranchId);
-const app = buildApi({ database: asDatabaseHealth(pool), auth: createSqlAuthService(pool, authSecret), catalog: new CatalogService(pool), floor: new FloorService(pool), billing: new BillingService(pool), procurement: new ProcurementService(pool), workforce: new WorkforceService(pool), sync: new SyncService(pool), replication, deploymentMode, localBranchId: await replication.localBranchId(), internalReplicationSecret: process.env.EDGE_INTERNAL_REPLICATION_SECRET, corsOrigins });
+const app = buildApi({ database: asDatabaseHealth(pool), auth: createSqlAuthService(pool, authSecret), catalog: new CatalogService(pool), floor: new FloorService(pool), billing: new BillingService(pool), procurement: new ProcurementService(pool), workforce: new WorkforceService(pool), sync: new SyncService(pool), replication, reports: new ReportsService(pool, deploymentMode), deploymentMode, localBranchId: await replication.localBranchId(), internalReplicationSecret: process.env.EDGE_INTERNAL_REPLICATION_SECRET, corsOrigins });
 const close = async (): Promise<void> => { await app.close(); await pool.end(); };
 process.once("SIGINT", () => void close()); process.once("SIGTERM", () => void close());
 await app.listen({ host, port });

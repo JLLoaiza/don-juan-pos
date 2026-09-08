@@ -204,3 +204,37 @@ Resultados reales:
 - Cloud permite únicamente `POST /me/active-branch` como cambio de contexto de lectura autorizado por la sesión; el candado Cloud mantiene bloqueados los comandos operativos.
 - Edge permite `/health` sin autenticación ni datos sensibles aun cuando está enrolado. Su selector sólo permite su propia sede enrolada.
 - Validado en APIs reales: selector Cloud multi-sede **200**; `/health` de Edge enrolado **200**. Regresiones HTTP 5/5 y typecheck correcto.
+# Handoff — Fase 7 reportes Cloud (backend listo para frontend)
+
+## Alcance y seguridad
+
+- Los reportes existen **sólo en `SERVER_ROLE=cloud`** y leen exclusivamente `cloud_replica_events` / `cloud_replica_entities` ya confirmados por un Edge. En Edge retornan `422`; no hay escritura remota ni ruta operacional nueva.
+- La sede procede siempre de la sesión activa autorizada. No se acepta ni se usa `companyId` ni `branchId` del navegador; filtros desconocidos son ignorados por contrato.
+- Todas las respuestas incluyen `freshness`: `lastReceivedAt`, `stale` y `source: "CONFIRMED_CLOUD_REPLICA"`. Los costos históricos/profitabilidad sólo se devuelven con `reports.view_costs`; nunca se recalculan desde el catálogo actual.
+
+## Contrato publicado
+
+`packages/contracts/src/reports.ts` exporta `ReportRangeQuerySchema` (`from`, `to` semiabierto, `page`, `pageSize`), `DashboardReportSchema`, `SalesReportSchema` y `ProductPerformanceReportSchema`.
+
+| Ruta | Permisos | Respuesta |
+| --- | --- | --- |
+| `GET /reports/dashboard` | `reports.view`, `reports.dashboard` | ventas cobradas, ticket medio, cuentas/mesas activas y, con permiso, costo/margen histórico. |
+| `GET /reports/sales` | `reports.view`, `reports.sales` | pagos registrados paginados; montos son strings decimales. |
+| `GET /reports/products` | `reports.view`, `reports.products` | rendimiento por producto desde snapshots de cuentas confirmadas. |
+| `GET /reports/sales/export.csv` | `reports.view`, `reports.sales`, `reports.export` | mismo alcance semántico que ventas, CSV UTF-8 con decimales sin formato visual. |
+
+Ejemplo de metadato común: `{ "freshness": { "branchId": "…", "lastReceivedAt": "2026-09-08T12:00:00.000Z", "stale": false, "source": "CONFIRMED_CLOUD_REPLICA" } }`.
+
+## Permisos y migración
+
+`0028_reports_permissions.sql` incorpora `reports.dashboard`, `reports.sales`, `reports.products`, `reports.export` y `reports.view_costs`, concedidos al rol `Administrator`; también añade índices de lectura de réplica. La migración fue aplicada contra Cloud local (5434).
+
+## Validación
+
+- `pnpm typecheck`: correcto.
+- HTTP: 7/7 (`reports.http.test.ts` + límites local-first); cubre permisos, sede derivada, CSV y bloqueo Edge.
+- PostgreSQL Cloud: 1/1 (`reports.integration.test.ts`), con pago/snapshot confirmado y sin costos para usuario no autorizado.
+
+## Para Claude
+
+Consumir únicamente desde la instalación Cloud seleccionando la sede mediante `POST /me/active-branch`; al cambiar sede invalidar todas las consultas `/reports/*`. Mostrar el indicador `freshness` y tratar `stale` como datos potencialmente atrasados. No crear mocks de estas rutas ni enviar IDs de compañía/sede. Fase 8 no se inició.
