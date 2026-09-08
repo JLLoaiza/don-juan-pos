@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent } from "react";
+import { useCallback, useState } from "react";
 import { Banner, EmptyState, ErrorState, LoadingState, type ErrorStateVariant } from "@don-juan/ui";
 import type { AuthContext } from "@don-juan/contracts";
 import { ApiRequestError } from "../../lib/api/httpClient";
@@ -122,29 +122,38 @@ function CloudReplicationView({
   const [switchError, setSwitchError] = useState<string | null>(null);
   const entities = useReplicationEntities(true);
 
-  const handleBranchChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    const branchId = event.target.value;
-    if (!branchId || branchId === activeBranch?.id) return;
-    setSwitching(true);
-    setSwitchError(null);
-    auth
-      .setActiveBranch(branchId)
-      .then(onBranchChanged)
-      .catch((cause: unknown) => {
-        setSwitchError(
-          cause instanceof ApiRequestError && cause.status === 403
-            ? "La nube todavía no permite cambiar de sede activa desde el navegador: POST /me/active-branch está bloqueado por diseño en un despliegue cloud (apps/api/src/app.ts). Se necesita una decisión de backend antes de habilitar este selector."
-            : "No se pudo cambiar de sede.",
-        );
-      })
-      .finally(() => setSwitching(false));
-  };
+  // Shared by the <select> and the consolidated table below: both switch the
+  // session's active branch via the same real endpoint (POST /me/active-branch),
+  // now allowed as a read-context change on a cloud deployment.
+  const selectBranch = useCallback(
+    (branchId: string) => {
+      if (!branchId || branchId === activeBranch?.id) return;
+      setSwitching(true);
+      setSwitchError(null);
+      auth
+        .setActiveBranch(branchId)
+        .then(onBranchChanged)
+        .catch((cause: unknown) => {
+          setSwitchError(
+            cause instanceof ApiRequestError && cause.status === 403
+              ? "No tienes acceso a esa sede, o tu acceso cambió. Vuelve a intentarlo o contacta a un administrador."
+              : "No se pudo cambiar de sede.",
+          );
+        })
+        .finally(() => setSwitching(false));
+    },
+    [auth, activeBranch, onBranchChanged],
+  );
 
   return (
     <div className="dj-replication__panel">
       <label className="dj-replication__selector">
         <span>Sede</span>
-        <select value={activeBranch?.id ?? ""} onChange={handleBranchChange} disabled={switching || branches.length <= 1}>
+        <select
+          value={activeBranch?.id ?? ""}
+          onChange={(event) => selectBranch(event.target.value)}
+          disabled={switching || branches.length <= 1}
+        >
           {branches.map((branch) => (
             <option key={branch.id} value={branch.id}>
               {branch.name}
@@ -193,7 +202,13 @@ function CloudReplicationView({
       ) : null}
 
       <ReplicationEntitiesSection entities={entities} />
-      <ConsolidatedDashboard branches={branches} activeBranch={activeBranch} status={status} />
+      <ConsolidatedDashboard
+        branches={branches}
+        activeBranch={activeBranch}
+        status={status}
+        switching={switching}
+        onSelectBranch={selectBranch}
+      />
     </div>
   );
 }
@@ -283,14 +298,24 @@ function ConsolidatedDashboard({
   branches,
   activeBranch,
   status,
+  switching,
+  onSelectBranch,
 }: {
   branches: readonly Branch[];
   activeBranch: Branch | null;
   status: CloudReplicationStatus;
+  switching: boolean;
+  onSelectBranch: (branchId: string) => void;
 }) {
+  if (branches.length <= 1) return null;
+
   return (
     <div className="dj-replication__dashboard">
-      <h2>Panel consolidado de sedes autorizadas</h2>
+      <h2>Sedes autorizadas</h2>
+      <p className="dj-replication__hint">
+        Elige una sede para ver su estado y réplica arriba. El contrato expone el estado de una sede a la vez (la
+        activa de la sesión); no hay una consulta que traiga el estado de todas simultáneamente.
+      </p>
       <table className="dj-replication__table">
         <thead>
           <tr>
@@ -299,30 +324,39 @@ function ConsolidatedDashboard({
           </tr>
         </thead>
         <tbody>
-          {branches.map((branch) => (
-            <tr key={branch.id}>
-              <td>{branch.name}</td>
-              <td>
-                {branch.id === activeBranch?.id ? (
-                  <>
-                    {status.edgeActive ? "Activo" : "Inactivo"} · última sincronización{" "}
-                    {formatDateTime(status.lastReceivedAt)}
-                  </>
-                ) : (
-                  "No disponible: cambiar de sede activa está bloqueado en este despliegue (ver aviso abajo)."
-                )}
-              </td>
-            </tr>
-          ))}
+          {branches.map((branch) => {
+            const isActive = branch.id === activeBranch?.id;
+            return (
+              <tr key={branch.id} className={isActive ? "dj-replication__row--active" : undefined}>
+                <td>
+                  {isActive ? (
+                    branch.name
+                  ) : (
+                    <button
+                      type="button"
+                      className="dj-replication__row-button"
+                      onClick={() => onSelectBranch(branch.id)}
+                      disabled={switching}
+                    >
+                      {branch.name}
+                    </button>
+                  )}
+                </td>
+                <td>
+                  {isActive ? (
+                    <>
+                      {status.edgeActive ? "Activo" : "Inactivo"} · última sincronización{" "}
+                      {formatDateTime(status.lastReceivedAt)}
+                    </>
+                  ) : (
+                    "Selecciona esta sede para ver su estado."
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
-      {branches.length > 1 ? (
-        <Banner
-          tone="info"
-          title="Panel consolidado parcial"
-          description="El contrato actual sólo expone el estado de réplica de la sede activa de la sesión, y POST /me/active-branch está bloqueado en un despliegue cloud (apps/api/src/app.ts). No es posible construir un panel con el estado real de todas las sedes autorizadas hasta que backend habilite una consulta multi-sede o un cambio de sede de solo lectura para este flujo."
-        />
-      ) : null}
     </div>
   );
 }

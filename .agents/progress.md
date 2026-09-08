@@ -12,7 +12,7 @@ Estados usados: `PENDING` (no iniciado), `READY` (desbloqueado pero no iniciado)
 | Fase 3 | Salón: áreas, mesas, cuentas, consumo | COMPLETE | COMPLETE (salón, cuenta y consumo en `/floor` y `/floor/accounts/:id`) | - |
 | Fase 4 | Cobro: descuentos, servicio, divisiones, pagos, caja | COMPLETE | COMPLETE | YES |
 | Fase 5 | Compras, gastos, Kardex, empleados | COMPLETE | COMPLETE | YES |
-| Fase 6 | Local-first: servidor por sede + réplica cloud (`replication/*`) | COMPLETE | PARTIAL (`/replication`: estado y consulta de réplica reales; selector multi-sede y panel consolidado bloqueados por backend — ver nota) | - |
+| Fase 6 | Local-first: servidor por sede + réplica cloud (`replication/*`) | COMPLETE | COMPLETE (`/replication`: estado y consulta de réplica reales, selector multi-sede en Cloud y `/health` público en Edge, verificados en vivo tras `ac5181e`) | - |
 | Fase 7 | Reportes y operación a escala | PENDING | PENDING (placeholder en `/reports`) | - |
 
 ## Notas de la fase actual (Fase 1, frontend)
@@ -129,3 +129,23 @@ un Edge real y sano — confirmado en vivo con captura de pantalla. Detalle
 completo, con las rutas exactas y la evidencia de cada verificación, en
 `.agents/handoffs/claude-latest.md` y `.agents/coordination.md`. No se
 avanza a Fase 7.
+
+## Nota frontend — Fase 6 cierre (2026-09-08)
+
+Frontend `COMPLETE`. Backend corrigió los dos bloqueos anteriores en
+`ac5181e` (exenta `/health` de ambos candados de sólo-lectura; exenta
+`POST /me/active-branch` del candado Cloud). Se ajustó únicamente el copy de
+`ReplicationPage.tsx` que ya no reflejaba la realidad (mensaje de bloqueo
+permanente al cambiar de sede, aviso "Panel consolidado parcial") y se
+unificó el cambio de sede entre el `<select>` y las filas de la nueva
+sección "Sedes autorizadas"; ningún otro comportamiento cambió. Verificado
+en vivo contra un Edge y un Cloud reales, esta vez con un usuario admin
+autorizado en dos sedes: el selector (en sus tres puntos de entrada — barra
+superior, selector propio de `/replication`, filas de la tabla) cambia de
+sede correctamente y el panel se actualiza con datos reales y honestos por
+sede; `/health` de un Edge enrolado responde `200` sin credenciales y el
+badge global muestra "En línea". Reglas local-first re-confirmadas sin
+regresión (`grep` limpio de `/sync`, `IndexedDB`, `DEVICE_ONLY`). `pnpm -w
+typecheck` correcto; `pnpm --filter @don-juan/web test` 159/159 (2 pruebas
+nuevas, una reescrita). No se avanza a Fase 7. Detalle completo en
+`.agents/handoffs/claude-latest.md` y `.agents/coordination.md`.

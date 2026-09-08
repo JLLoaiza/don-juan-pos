@@ -93,7 +93,7 @@ describe("ReplicationPage", () => {
     expect(screen.getByText("timeout")).toBeInTheDocument();
   });
 
-  it("renders the cloud status, branch selector and entities for a multi-branch admin", async () => {
+  it("renders the cloud status, branch selector, entities and the authorized-branches table for a multi-branch admin", async () => {
     const authGet = vi.fn((path: string) =>
       path === "/replication/status" ? Promise.resolve(CLOUD_STATUS) : Promise.resolve(CLOUD_ENTITIES),
     );
@@ -107,24 +107,67 @@ describe("ReplicationPage", () => {
     expect(await screen.findByText("Servidor Chipre")).toBeInTheDocument();
     expect(screen.getByRole("combobox")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText(/restaurant_table/)).toBeInTheDocument());
-    expect(screen.getByText("Panel consolidado parcial")).toBeInTheDocument();
+    expect(screen.getByText("Sedes autorizadas")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Norte" })).toBeInTheDocument();
   });
 
-  it("does not show a branch selector for a single-branch cloud user", async () => {
+  it("does not show the authorized-branches table for a single-branch cloud user", async () => {
     const authGet = vi.fn((path: string) =>
       path === "/replication/status" ? Promise.resolve(CLOUD_STATUS) : Promise.resolve({ ...CLOUD_ENTITIES, entities: [] }),
     );
     renderPage(makeAuth({ authGet: authGet as unknown as AuthContextValue["authGet"] }));
 
     expect(await screen.findByText("Servidor Chipre")).toBeInTheDocument();
-    expect(screen.queryByText("Panel consolidado parcial")).not.toBeInTheDocument();
+    expect(screen.queryByText("Sedes autorizadas")).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox")).toBeDisabled();
   });
 
-  it("surfaces the real cloud 403 when the user tries to switch branch", async () => {
+  it("switches branch from the selector and reloads the status for the newly active branch", async () => {
     const authGet = vi.fn((path: string) =>
       path === "/replication/status" ? Promise.resolve(CLOUD_STATUS) : Promise.resolve(CLOUD_ENTITIES),
     );
-    const setActiveBranch = vi.fn().mockRejectedValue(new ApiRequestError("Cloud is read-only for branch operational commands", "http", 403));
+    const setActiveBranch = vi.fn().mockResolvedValue(undefined);
+    renderPage(
+      makeAuth({
+        context: baseContext({ branches: [BRANCH_1, BRANCH_2] }),
+        authGet: authGet as unknown as AuthContextValue["authGet"],
+        setActiveBranch,
+      }),
+    );
+
+    const select = await screen.findByRole("combobox");
+    const initialCalls = authGet.mock.calls.length;
+    fireEvent.change(select, { target: { value: "b2" } });
+
+    await waitFor(() => expect(setActiveBranch).toHaveBeenCalledWith("b2"));
+    // A successful switch re-triggers useReplicationStatus's reload().
+    await waitFor(() => expect(authGet.mock.calls.length).toBeGreaterThan(initialCalls));
+    expect(screen.queryByText("No se pudo cambiar de sede")).not.toBeInTheDocument();
+  });
+
+  it("switches branch by clicking a row in the authorized-branches table", async () => {
+    const authGet = vi.fn((path: string) =>
+      path === "/replication/status" ? Promise.resolve(CLOUD_STATUS) : Promise.resolve(CLOUD_ENTITIES),
+    );
+    const setActiveBranch = vi.fn().mockResolvedValue(undefined);
+    renderPage(
+      makeAuth({
+        context: baseContext({ branches: [BRANCH_1, BRANCH_2] }),
+        authGet: authGet as unknown as AuthContextValue["authGet"],
+        setActiveBranch,
+      }),
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Norte" }));
+
+    await waitFor(() => expect(setActiveBranch).toHaveBeenCalledWith("b2"));
+  });
+
+  it("surfaces a real 403 (e.g. access to that branch was revoked) without claiming a permanent block", async () => {
+    const authGet = vi.fn((path: string) =>
+      path === "/replication/status" ? Promise.resolve(CLOUD_STATUS) : Promise.resolve(CLOUD_ENTITIES),
+    );
+    const setActiveBranch = vi.fn().mockRejectedValue(new ApiRequestError("Forbidden", "http", 403));
     renderPage(
       makeAuth({
         context: baseContext({ branches: [BRANCH_1, BRANCH_2] }),
@@ -137,7 +180,8 @@ describe("ReplicationPage", () => {
     fireEvent.change(select, { target: { value: "b2" } });
 
     expect(await screen.findByText("No se pudo cambiar de sede")).toBeInTheDocument();
-    expect(screen.getByText(/bloqueado por diseño en un despliegue cloud/)).toBeInTheDocument();
+    expect(screen.getByText(/no tienes acceso a esa sede/i)).toBeInTheDocument();
+    expect(screen.queryByText(/bloqueado por diseño/)).not.toBeInTheDocument();
   });
 
   it("shows a forbidden state on 403 and a network state on a connectivity failure", async () => {

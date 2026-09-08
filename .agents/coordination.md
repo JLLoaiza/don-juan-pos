@@ -321,3 +321,54 @@ igual que ya se excluyen `/auth/*` y `/replication/cloud/*`.
 (estado y consulta de réplica de la sede activa, tanto Edge como Cloud) está
 `COMPLETE` y verificado en vivo. Pendiente de que Codex/el gestor decidan
 sobre las opciones anteriores antes de cerrar Fase 6 frontend por completo.
+
+## 2026-09-08 — Bloqueos anteriores cerrados por backend (`ac5181e`); Fase 6 frontend `COMPLETE`
+
+**Resolución.** `ac5181e` ("fix(phase6): allow cloud context and edge
+health") aplicó la opción 1 de ambos bloqueos anteriores directamente en
+`apps/api/src/app.ts:25-33`: exenta `GET /health` de los dos candados de
+sólo-lectura (incluso con un Edge ya enrolado) y exenta `POST
+/me/active-branch` del candado de Cloud, tratándolo como cambio de contexto
+de lectura autorizado por sesión en vez de una escritura operacional. En
+Edge, `POST /me/active-branch` gana además un caso especial: si el
+`branchId` del cuerpo coincide con la sucursal enrolada, deja pasar la
+petición sin exigir un `activeBranch` ya resuelto (resuelve el
+huevo-y-gallina de una sesión nueva); si no coincide, `403` inmediato — un
+Edge sigue sin poder operar otra sucursal. Codex agregó 3 pruebas HTTP
+nuevas (`replication.http.test.ts`) que cubren exactamente estos tres casos.
+
+**Verificación frontend, independiente de la de Codex.** Se revalidó en
+vivo con Postgres Edge/Cloud desechables nuevos y, esta vez, un usuario
+admin Cloud autorizado en dos sedes reales (para ejercitar el caso que
+antes quedaba permanentemente bloqueado: sesión nueva, `activeBranch: null`,
+dos o más sedes autorizadas). `POST /me/active-branch` respondió `200` en
+ambas direcciones; el selector de sede (los tres puntos de entrada de la UI:
+selector de la barra superior, selector propio de `/replication`, filas de
+la tabla "Sedes autorizadas") cambió de sede correctamente y el panel se
+actualizó con el estado real de cada una. `GET /health` de un Edge enrolado
+respondió `200` sin `Authorization`, y en el navegador el badge global pasó
+de "SERVIDOR NO DISPONIBLE" (falso negativo documentado el ciclo anterior) a
+"En línea".
+
+**Cambio de frontend.** Sólo copy: el mensaje de error al fallar un cambio
+de sede ya no afirma un bloqueo arquitectónico permanente, y el aviso
+"Panel consolidado parcial" se retiró por quedar factualmente incorrecto.
+El panel se renombró "Sedes autorizadas" y sus filas ahora son botones que
+cambian de sede (comparten la misma función que el `<select>`). El contrato
+sigue exponiendo el estado de una sola sede a la vez — no hay una consulta
+bulk multi-sede — así que el panel sigue sin poblar todas las filas
+simultáneamente; es honesto al respecto en su propio texto. Ningún otro
+comportamiento de `/replication` cambió.
+
+**Incidente de entorno (ajeno a este trabajo).** A mitad de esta
+revalidación, Docker Desktop se cayó por completo (`com.docker.service`
+quedó `Stopped`), deteniendo todos los contenedores de la máquina —
+incluidos, de haber alguno arriba, los de Codex. Se relanzó Docker Desktop
+(sin privilegios de administrador para reiniciar el servicio directamente,
+pero el propio ejecutable lo logró) y sólo se restauraron los contenedores
+desechables propios de esta verificación. Si Codex tenía servicios propios
+corriendo, puede necesitar reiniciarlos manualmente.
+
+**Estado.** Fase 6 frontend queda `COMPLETE`. `pnpm -w typecheck` correcto;
+`pnpm --filter @don-juan/web test` 159/159. No se avanza a Fase 7. Detalle
+completo en `.agents/handoffs/claude-latest.md`.

@@ -135,3 +135,22 @@
   border-bottom: 1px solid var(--dj-color-border);
   font-size: var(--dj-font-size-sm);
 }
+
+.dj-replication__row--active {
+  background: var(--dj-color-neutral-bg);
+}
+
+.dj-replication__row-button {
+  font: inherit;
+  color: var(--dj-color-primary);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.dj-replication__row-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
