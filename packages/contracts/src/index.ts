@@ -8,3 +8,5 @@ export * from "./floor.js";
 export * from "./billing.js";
 
 export * from './procurement.js';
+
+export * from './workforce.js';
