@@ -51,6 +51,8 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/app
       WORKER_ID: compose-worker
       PRINT_SINK_DIRECTORY: /runtime/prints
+      CLOUD_SYNC_URL: ${CLOUD_SYNC_URL:-}
+      CLOUD_SYNC_TOKEN: ${CLOUD_SYNC_TOKEN:-}
     command: node apps/worker/dist/main.js
     volumes:
       - don_juan_prints:/runtime/prints

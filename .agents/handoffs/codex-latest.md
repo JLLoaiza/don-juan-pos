@@ -1,105 +1,131 @@
-# Handoff — Codex
+# Handoff — Backend, Fase 6 (primer slice Edge)
 
-## Fase 3 — salón, mesas, cuentas y consumo
+## Estado
 
-Backend completado. La sucursal se deriva exclusivamente de la sesión autenticada: ningún endpoint acepta `company_id` ni `branch_id` del cliente.
+Fase 6 backend: **PARTIAL**. Se publicó el núcleo Edge de dispositivos, feed de cambios cursorizado y estado del outbox. No se implementó una Cloud ficticia ni se inició Fase 7.
 
-### Contratos y endpoints disponibles
+La arquitectura Edge/Cloud y el límite pendiente de resolver están documentados en `.agents/coordination.md`.
 
-Todos requieren `Authorization: Bearer`. Los comandos mutantes requieren `Idempotency-Key` UUID.
+## Contratos y rutas reales
 
-- `GET /floor` — áreas y mesas activas de la sede, con `openAccountId` si existe.
-- `POST /dining-areas` — `{ name }`; permiso `dining_areas.create`.
-- `POST /restaurant-tables` — `{ diningAreaId, name, capacity, status? }`; permiso `tables.create`. No permite crear una mesa como `OCCUPIED`.
-- `POST /accounts` — `{ tableId, customerId?, notes? }`; permiso `accounts.open`. Bloquea la mesa, admite `AVAILABLE` o `RESERVED`, y la deja `OCCUPIED`.
-- `GET /accounts/:id` — snapshot histórico de cuenta; permiso `accounts.view`.
-- `POST /accounts/:id/confirm-consumption` — `{ expectedVersion, items: [{ productId, quantity, selectedAdditionals, notes? }] }`; requiere `accounts.update`, `sales.add_items` y `kitchen.send`.
+Todos derivan la sucursal de la sesión autenticada: no reciben ni aceptan `companyId` o `branchId`.
 
-Los schemas Zod y tipos están en `packages/contracts/src/floor.ts`, exportados por `@don-juan/contracts`.
+| Ruta | Permiso | Uso |
+| --- | --- | --- |
+| `GET /sync/devices` | `sync.devices.view` | Lista dispositivos de la sucursal activa. |
+| `POST /sync/devices` | `sync.devices.manage` | Registra/actualiza el dispositivo actual; requiere `Idempotency-Key`. |
+| `POST /sync/devices/:id/deactivate` | `sync.devices.manage` | Desactiva un dispositivo; requiere `Idempotency-Key`. |
+| `GET /sync/status` | `sync.status.view` | Expone conteos del outbox y cursor más reciente. |
+| `GET /sync/changes?deviceId=…&after=0&limit=100` | `sync.changes.pull` | PULL cursorizado de cambios de la sucursal. |
 
-### Reglas para Claude
+Contratos publicados en `packages/contracts/src/sync.ts`:
+- `SyncDeviceSchema`, `RegisterSyncDeviceRequestSchema`.
+- `PullSyncChangesRequestSchema` y `PullSyncChangesResponseSchema`.
+- `SyncStatusSchema`.
+- `SyncOperationRequestSchema`/resultado y batch PUSH están publicados para mocks compatibles, pero **aún no existe `POST /sync/push`**.
 
-- El frontend solo selecciona `branch_id` mediante `POST /me/active-branch`; no mostrar, guardar ni enviar compañía.
-- Mantener un UUID por cada intento de comando y reenviarlo como `Idempotency-Key` ante reintentos.
-- `confirm-consumption` exige la `version` de la cuenta leída. Un `409 CONFLICT` significa recargar la cuenta antes de volver a confirmar.
-- Cambio de contrato compatible: `AccountItemSnapshot.unitCost` ahora puede ser `null`. El backend solo lo devuelve con `products.view_cost`; también elimina `totalCost` y `unitCost` de `consumptionSnapshot` sin ese permiso. El frontend actual ya maneja `null` al formatear montos.
-- `quantity` es string entero positivo. El cliente solo expresa intención: no manda precio, costo, impuesto, total ni receta.
-- `selectedAdditionals[].noCharge` solo funciona si el producto permite el adicional gratuito; incluso gratuito descuenta inventario.
-- La respuesta de confirmación contiene la cuenta actualizada, ticket de cocina, print job y alertas `NEGATIVE_STOCK`. No bloquear la venta por alerta de stock.
+El frontend debe persistir `deviceId` internamente tras registrarse y usarlo en cada PULL; nunca lo pide como UUID manual al operador.
 
-### Integridad aplicada
+## Garantías del slice
 
-- Las operaciones mutantes usan ledger idempotente por compañía interna + `operation_id` y validan acceso efectivo a la sucursal.
-- Abrir cuenta bloquea la mesa (`FOR UPDATE`) y conserva el índice SQL de una única cuenta `OPEN` por mesa.
-- Confirmar consumo bloquea cuenta y todas las existencias afectadas en orden determinista. En el mismo commit crea los snapshots de ítems/adicionales, descuenta inventario, registra Kardex inmutable, recalcula totales, genera orden de cocina, print job, auditoría y transactional outbox.
-- Precios, impuestos, costo y receta se resuelven en backend. Las recetas y montos de inventario quedan en `consumptionSnapshot`; el SQL impide reescribir snapshots de ítems confirmados.
-- Sin impresora de cocina activa el consumo sigue siendo válido: el print job se persiste como `FAILED` con motivo explícito y el worker puede reintentarlo cuando exista destino. Con impresora activa inicia `PENDING`.
-- Las migraciones `0013`–`0015` agregan permisos y defensas SQL de aislamiento por sede/snapshots. `0014`–`0015` corrigen de forma compatible el trigger compartido ya aplicado; no reescriben historial de migración.
+- Registro/desactivación de dispositivo usa el ledger `command_operations`: reintentar el mismo `Idempotency-Key` devuelve el resultado anterior.
+- Un dispositivo desactivado no puede volver a registrarse ni hacer PULL.
+- El trigger `trg_sync_outbox_publish_change` convierte cada inserción transaccional existente en `sync_outbox` en un registro branch-scoped de `sync_changes`. Si el comando de negocio revierte, también revierte el feed.
+- El cursor es `BIGSERIAL`, transportado como string para no perder precisión JavaScript.
+- El PULL bloquea y valida el dispositivo activo dentro de la sucursal autenticada y actualiza `last_sync_at`; no filtra cambios de otra sede.
+- Se añadieron permisos de sincronización y se asignan idempotentemente al rol de desarrollo Administrator.
 
-### Verificación
+## Migración
 
-- API HTTP: 20 pruebas correctas.
-- Integración PostgreSQL: flujo área → mesa → cuenta → consumo → Kardex → cocina → print job → outbox correcto, incluido replay idempotente.
-- Typecheck de contratos y API correcto.
-## Fase 4 — pagos directos y apertura de caja
+`infra/db/migrations/0024_sync_protocol_core.sql`:
+- añade metadatos de protocolo/conflicto a `sync_operations`;
+- añade trazabilidad/versionado a `sync_devices`;
+- crea permisos de sync;
+- instala el trigger transaccional de change feed.
 
-Backend parcialmente disponible. La compañía y sucursal se derivan siempre de la sesión autenticada: los requests de cobro y caja no aceptan `companyId` ni `branchId`.
+Aplicada correctamente al PostgreSQL local mediante el migrador.
 
-### Endpoints disponibles
+## Verificación
 
-Todos requieren `Authorization: Bearer`; los comandos requieren `Idempotency-Key` UUID.
+- `DATABASE_URL_TEST=postgresql://postgres:postgres@localhost:5433/app pnpm --filter @don-juan/api test:integration`: **15/15**.
+- `pnpm --filter @don-juan/api test -- --run src/sync.http.test.ts`: **2/2**.
+- `pnpm -w typecheck`: correcto.
 
-- `GET /accounts/:id/billing` — snapshot de liquidación, pagos registrados y saldo; permiso `payments.view`.
-- `POST /cash-sessions` — `{ cashRegisterId, openingAmount, notes? }`; permiso `cash.open`. Bloquea la caja y solo permite una sesión `OPEN` por caja.
-- `POST /accounts/:id/discounts` — `{ expectedVersion, name, type: PERCENTAGE|FIXED, value }`; permiso `sales.apply_discount`.
-- `PUT /accounts/:id/service` — `{ expectedVersion, percentage }`; permiso `sales.modify_service`.
-- `POST /accounts/:id/payments` — `{ expectedVersion, paymentMethodId, accountSplitId?, amountApplied, cashReceived?, cashSessionId?, reference?, notes?, printReceipt? }`; permiso `payments.create`.
+## Pendiente antes de declarar Fase 6 completa
 
-`RegisterPaymentRequest` solo cubre liquidación directa por ahora. Enviar `accountSplitId` recibe `422` hasta que se finalicen divisiones. Para CASH se exige una sesión abierta de la sede y `cashReceived >= amountApplied`; CARD/QR no modifican efectivo físico. Un pago CASH crea exactamente un movimiento `SALE` por el monto aplicado (no por el efectivo recibido), registra el cambio y, al saldar, marca la cuenta como `PAID` y libera su mesa.
+1. `POST /sync/push`: almacenar operaciones por dispositivo, respetar dependencias y despachar comandos de dominio con reautorización, resultados `PROCESSED/FAILED/CONFLICT`.
+2. Cola local IndexedDB y aplicación de PULL en PWA; UI de estado, pendientes y conflictos.
+3. Worker Edge→Cloud con identidad Edge y endpoint Cloud autenticado/versionado.
+4. Política completa de conflicto/resolución, backoff y recuperación tras reinicio.
+5. Topología Cloud separada revisada por arquitectura. No hay failover automático de clientes hacia Cloud.
 
-Descuentos y servicio ya tienen las rutas indicadas. Los contratos de divisiones, cierre y ajustes de caja siguen publicados en `packages/contracts/src/billing.ts`, pero esos comandos todavía **no tienen rutas**: Claude puede mantenerlos como mocks, sin anticipar una API distinta.
+## Hotfix backend — Fase 5: respuestas DATE de personal (2026-09-07)
 
-### Integridad aplicada
+**Corregido.** Los mapeadores de `employee_wage_rates`, `employee_shifts`, `employee_bonuses` y `employee_payments` usaban `String(row.date).slice(0,10)`. Cuando el driver entregaba una columna PostgreSQL `DATE` como objeto `Date`, el valor resultaba en texto no ISO (por ejemplo `Sun Sep 07`) y los schemas HTTP devolvían 400 después de que la transacción ya hubiese confirmado.
 
-- La migración `0016_payments_and_cash_integrity.sql` añade snapshots de método, sesión, efectivo/cambio y `operation_id`; valida en SQL que método, sesión, cuenta y split pertenezcan a la misma sede.
-- Pago y apertura de sesión son transacciones idempotentes con auditoría y transactional outbox. El cobro bloquea cuenta, método, pagos previos y sesión según corresponda; nunca usa un worker para confirmar dinero, cuenta o caja.
-- Todo pago, descuento o cambio de servicio incrementa la versión de cuenta. Un cliente debe recargar `GET /accounts/:id/billing` tras un `409 CONFLICT` antes de reintentar con una nueva clave.
-- Los descuentos quedan como snapshots inmutables. Los totales, impuesto y servicio se recalculan con decimales desde los ítems confirmados y descuentos registrados; el descuento de cuenta se prorratea determinísticamente sin reescribir snapshots de consumo. Tras el primer pago se rechaza cualquier cambio comercial, incluido nuevo consumo.
-- `cash_movements` es inmutable y no admite inserciones en sesiones cerradas. Ausencia de impresora de recibos no revierte el cobro: persiste un `print_job` `FAILED` auditable; con impresora activa inicia `PENDING`.
+`apps/api/src/workforce.ts` ahora normaliza `DATE` con `dateOnly`: conserva strings ISO y, para objetos `Date`, extrae componentes UTC, evitando un corrimiento de día por zona horaria. La misma normalización se usa al resolver la vigencia de tarifas. `0025_workforce_date_response_repair.sql` repara resultados históricos en `command_operations` desde las filas canónicas de tarifa/turno/bono/pago, de modo que un reintento con la misma clave idempotente ya no repite el 400 ni duplica el hecho previamente confirmado.
 
-### Verificación
+**Verificado.** La nueva integración fuerza el parser PostgreSQL de `DATE` a devolver `Date` y confirma respuestas exactas `YYYY-MM-DD` para crear/listar tarifa, clock-in/out, bono y pago, incluido replay idempotente. Migración aplicada localmente; integración API 16/16, suite API 42 pasaron (32 omitidas sin `DATABASE_URL_TEST`) y `pnpm -w typecheck` correcto. Fase 5 backend permanece COMPLETE; Fase 6 sigue pausada durante este hotfix.
+## Integración limpia — Fase 5 (2026-09-07)
 
-- Compilación de contratos y typecheck de API correctos.
-- API HTTP: 25 pruebas correctas; incluye validación de autenticación, idempotencia, permisos de descuentos/servicio y eliminación de `companyId` en comandos de Fase 4.
-- Se añadió prueba PostgreSQL de apertura, pago efectivo, movimiento, cierre de cuenta, recibo, outbox y replay idempotente. Queda pendiente ejecutarla en el entorno local porque Docker Desktop no está iniciado.
+Validada entre backend `de7f54b` y frontend `8ece060` sobre PostgreSQL temporal nuevo, creado desde el árbol exacto de backend sin `0024`. El migrador aplicó `0001`–`0023` y `0025` y la segunda pasada devolvió `[]`; el defecto histórico atribuido a `0009_identity_access.sql` no se reprodujo. Integraciones de negocio 14/14, HTTP 3/3, frontend 148/148 y typecheck correcto. Fase 5 queda `Integrated = YES`; Fase 6 no se tocó. El detalle está en `.agents/handoffs/phase5-integration.md`.
+# Handoff — Backend, Fase 6 completa (Edge Sync)
 
-Actualización: POST /cash-sessions/:id/adjustments recibe { expectedVersion, amount, direction: INCREASE|DECREASE, reason } con cash.adjust; POST /cash-sessions/:id/close recibe { expectedVersion, countedCash, notes?, printReceipt? } con cash.close. Ambos usan Idempotency-Key; el cierre bloquea la sesión, calcula efectivo esperado desde movimientos y persiste snapshot inmutable.
+## Estado
 
-Actualización de cierre: cuando printReceipt es verdadero, el cierre crea un print_job DAY_CLOSE con el snapshot persistido. Sin impresora CASH activa queda FAILED con causa explícita, sin revertir la sesión cerrada.
+Backend Fase 6: **COMPLETE**, listo para integración. No se inició Fase 7. La Cloud sigue siendo una topología externa separada y opcional; no se habilita ni se suplanta con la misma base Edge.
 
-## Pausa segura — Fase 5
+## Contratos y rutas
 
-Fase 5 queda pausada por instrucción del usuario y no debe retomarse hasta integración de Fase 4. El commit `d30ca23` publicó solamente contratos iniciales de proveedores, compras y gastos. La migración local no confirmada `infra/db/migrations/0019_procurement_integrity.sql` conserva el avance SQL de aislamiento por sucursal, permisos y `operation_id`; no está mezclada con este corte de Fase 4 ni debe eliminarse.
+Todos usan la sucursal de la sesión autenticada. Ninguna ruta recibe, acepta ni autoriza por `companyId`/`branchId` enviados por cliente.
 
-## Actualización Fase 4 — lectura de caja para frontend
+| Ruta | Permiso | Resultado |
+| --- | --- | --- |
+| `POST /sync/push` | `sync.operations.push` | Procesa 1–100 comandos del dispositivo y devuelve resultado individual (`PENDING`, `PROCESSED`, `FAILED` o `CONFLICT`). |
+| `GET /sync/conflicts` | `sync.conflicts.view` | Lista únicamente conflictos no resueltos de la sede activa. |
+| `POST /sync/conflicts/:operationId/resolve` | `sync.conflicts.resolve` | Descarta explícitamente un conflicto con motivo e `Idempotency-Key`; conserva auditoría. |
+| `GET /sync/devices`, `POST /sync/devices`, `POST /sync/devices/:id/deactivate` | existentes | Registro y ciclo de vida de dispositivos. |
+| `GET /sync/changes`, `GET /sync/status` | existentes | Feed cursorizado y salud local del outbox. |
 
-Rutas disponibles con `Authorization: Bearer` y sucursal derivada de la sesión:
+`packages/contracts/src/sync.ts` publica `PushSyncOperationsRequestSchema`, `PushSyncOperationsResponseSchema`, `SyncConflictListSchema` y `ResolveSyncConflictRequestSchema`, además de los contratos de dispositivos/PULL ya existentes. Un ejemplo de PUSH es:
 
-- `GET /cash-registers` — permiso `cash.view`; devuelve las cajas de la sucursal activa y `openSession` (o `null`) por cada una.
-- `GET /cash-registers/:id/open-session` — permiso `cash.view`; devuelve la sesión `OPEN` de esa caja o `null`. Una caja de otra sucursal no se revela.
+```json
+{
+  "deviceId": "<uuid-del-dispositivo-registrado>",
+  "operations": [{
+    "operationId": "<uuid-global>",
+    "operationName": "employees.update",
+    "entityType": "employee",
+    "entityId": "<uuid-entidad>",
+    "expectedVersion": 3,
+    "dependsOnOperationIds": [],
+    "schemaVersion": 1,
+    "payload": { "firstName": "Ana", "lastName": "López", "expectedVersion": 3, "active": true }
+  }]
+}
+```
 
-Los contratos son `CashRegisterContextSchema` y `CashRegisterListSchema` en `@don-juan/contracts`. Claude ya puede completar las pantallas de ajustes y cierre usando la sesión incluida, y los comandos existentes `POST /cash-sessions/:id/adjustments` y `POST /cash-sessions/:id/close`; no debe enviar compañía ni sucursal.
-## Cierre backend — Fase 4
+El frontend no debe pedir UUIDs al operador: conserva `deviceId` y `operationId` internamente/IndexedDB. Para reintentar, reenvía exactamente la misma operación; no genera otro `operationId`.
 
-Se añade `GET /payment-methods`, con permiso `payments.view`, que devuelve exclusivamente métodos activos de la sucursal autenticada: `{ paymentMethods: [{ id, name, type, active }] }`. No recibe ni expone compañía o sucursal.
+## Garantías
 
-El seed de desarrollo `0020_development_cash_seed.sql` crea únicamente para la sucursal de desarrollo una `Caja Principal` y los métodos activos Efectivo/CASH, Tarjeta/CARD y QR/QR. Es idempotente y está marcado como datos de desarrollo: producción puede reemplazarlo o desactivarlo, sin depender de credenciales ni de esos IDs.
+- `operationId` no puede reutilizarse para otro dispositivo, sucursal, comando o payload.
+- PUSH bloquea el dispositivo, verifica que siga activo y deriva tenancy de acceso actual del usuario.
+- Cada comando se reautoriza con su permiso de negocio, no sólo con `sync.operations.push`; una revocación produce fallo por operación sin elevar permisos históricos.
+- Dependencias no procesadas y operaciones anteriores del mismo agregado permanecen `PENDING`; operaciones independientes del lote continúan.
+- `CatalogConflict` se persiste como `CONFLICT`, separado de `FAILED`; puede auditarse y descartarse de forma explícita. No existe una edición silenciosa ni last-write-wins.
+- Los comandos de negocio conservan sus propios límites transaccionales, `SELECT ... FOR UPDATE`, idempotencia, Kardex/outbox y snapshots. El protocolo no calcula ni sustituye reglas monetarias/costos.
+- `0026_sync_push_conflicts.sql` es aditiva: agrega hash de solicitud, índices de orden/conflictos y permisos `sync.operations.push`, `sync.conflicts.view`, `sync.conflicts.resolve`.
+- `apps/worker/src/sync-worker.ts` reclama outbox con `FOR UPDATE SKIP LOCKED`, reintenta exponencialmente y usa HTTPS sólo cuando ambos `CLOUD_SYNC_URL` y `CLOUD_SYNC_TOKEN` están configurados. Sin ambos valores no consume eventos ni simula una Cloud.
 
-Para cerrar ajustes y cierres, Claude debe cargar `GET /cash-registers` y seleccionar `openSession`; después usa `POST /cash-sessions/:id/adjustments` o `POST /cash-sessions/:id/close` con la `version` de esa sesión e `Idempotency-Key`. También puede cargar `GET /payment-methods` para el selector de cobro. Todas las rutas trabajan sobre la sucursal activa de la sesión.
+## Verificación
 
-Verificación: typecheck API correcto y 30 pruebas HTTP correctas. La prueba PostgreSQL cubre cajas, sesión abierta, métodos activos y que una sucursal no pueda leer la caja ni métodos de otra; está lista para ejecutarse cuando Docker Desktop vuelva a estar disponible.
-## Integración Fase 4 — aprobada
+- Typecheck global: correcto.
+- Integración PostgreSQL API: 17/17 correcta (incluye PUSH idempotente, dependencias, conflicto, descarte, PULL y dispositivo desactivado).
+- HTTP Sync: 3/3 correcta.
+- Worker: 2/2 correcta.
+- Instalación limpia validada desde el árbol exacto de Fase 6: `0000` + `0001`–`0026`, incluida `0024` y `0026`; segunda pasada `[]`; integración PostgreSQL 17/17 correcta.
 
-Validación realizada contra PostgreSQL local: 10/10 pruebas de integración API correctas, incluidos métodos de pago activos, cajas y sesión abierta aisladas por sucursal, pago CASH con cambio y operaciones idempotentes. `pnpm -w typecheck` pasó y el frontend tiene 139 pruebas correctas; no conserva mocks para las rutas reales de Fase 4 y refresca sus consultas al cambiar de sucursal. Fase 5 queda READY, sin retomar su implementación.
+## Pendiente de integración
 
-Nota: la suite global de migraciones detecta un defecto anterior en `0009_identity_access.sql` frente al DDL base (columna `user_roles.id`); no pertenece a Fase 4 y no se modificó una migración potencialmente aplicada.
+Frontend Fase 6 debe implementar IndexedDB, cola persistente, aplicación de PULL, visualización/resolución UX de conflictos e indicadores ONLINE/LOCAL_ONLY/DEVICE_ONLY contra estos contratos. La configuración/infraestructura de una Cloud consolidada real sigue requiriendo URL, credencial de servicio y receptor Cloud desplegado; no bloquea el backend Edge ni autoriza una segunda escritura operacional.

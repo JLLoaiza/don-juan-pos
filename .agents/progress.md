@@ -12,7 +12,7 @@ Estados usados: `PENDING` (no iniciado), `READY` (desbloqueado pero no iniciado)
 | Fase 3 | Salón: áreas, mesas, cuentas, consumo | COMPLETE | COMPLETE (salón, cuenta y consumo en `/floor` y `/floor/accounts/:id`) | - |
 | Fase 4 | Cobro: descuentos, servicio, divisiones, pagos, caja | COMPLETE | COMPLETE | YES |
 | Fase 5 | Compras, gastos, Kardex, empleados | COMPLETE | COMPLETE | YES |
-| Fase 6 | Sincronización Edge completa (outbox, pull, conflictos) | PARTIAL (dispositivos, estado y PULL cursorizado) | PARTIAL (conectividad ONLINE/DEVICE_ONLY real; sin cola de comandos aún — ver `/sync`) | - |
+| Fase 6 | Sincronización Edge completa (outbox, pull, conflictos) | COMPLETE | PARTIAL (conectividad ONLINE/DEVICE_ONLY real; sin cola de comandos aún — ver `/sync`) | - |
 | Fase 7 | Reportes y operación a escala | PENDING | PENDING (placeholder en `/reports`) | - |
 
 ## Notas de la fase actual (Fase 1, frontend)
@@ -86,3 +86,6 @@ Encontré y corregí dos bugs propios del frontend durante esa verificación:
 ## Integración — Fase 5 verificada en instalación limpia (2026-09-07)
 
 La integración entre backend `de7f54b` y frontend `8ece060` quedó satisfactoria. Se creó una base PostgreSQL temporal desde el árbol exacto del commit backend, sin la migración local no confirmada `0024`. El migrador aplicó `0001`–`0023` y `0025`, y una segunda ejecución devolvió `[]`; `0009_identity_access.sql` no bloqueó la instalación. Integraciones de negocio 14/14, HTTP 3/3, frontend 148/148 y typecheck global correcto. Fase 5 mantiene `Integrated = YES`; Fase 6 no se inició en esta integración. Ver `.agents/handoffs/phase5-integration.md`.
+## Nota backend — Fase 6 completa (2026-09-07)
+
+El carril backend Edge Sync está **COMPLETE** y preparado para integración: dispositivos branch-scoped, PULL cursorizado, PUSH por lotes con resultados individuales, deduplicación por `operationId`, orden por entidad/dependencias, reautorización por comando y conflictos explícitos/resolubles por descarte auditado. El outbox permanece transaccional y el worker sólo entrega hacia una Cloud si `CLOUD_SYNC_URL` y `CLOUD_SYNC_TOKEN` se configuran explícitamente; de otro modo conserva eventos pendientes sin alterar el escritor Edge. La UI/IndexedDB es responsabilidad frontend y sigue `PARTIAL`; Fase 7 no se inició. Instalación limpia desde el árbol exacto de Fase 6: migraciones `0000` + `0001`–`0026` y segunda pasada vacía; integraciones PostgreSQL 17/17.

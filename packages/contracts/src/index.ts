@@ -10,3 +10,5 @@ export * from "./billing.js";
 export * from './procurement.js';
 
 export * from './workforce.js';
+
+export * from './sync.js';
