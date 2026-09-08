@@ -82,3 +82,7 @@ Encontré y corregí dos bugs propios del frontend durante esa verificación:
 2. **`WorkforcePage.tsx` — el botón "Registrar salida" no manejaba ningún error.** `onClick={() => void api.clockOut(x.id, {}).then(afterMutation)}` no tenía `.catch`; un rechazo (por ejemplo, turno sin cobertura completa de tarifa) quedaba como una promesa no manejada, sin ningún aviso visible para el cajero — justo el tipo de caso que la regla "maneja errores de validación de manera clara" busca cubrir. Corregido con un manejador que captura el error y lo muestra en un `Banner`, igual que el resto de mutaciones de esta página. Se agregó una prueba en `WorkforcePage.test.tsx` que cubre este caso.
 
 `pnpm -w typecheck` correcto; `pnpm --filter @don-juan/web test` 148/148 (147 previas + la nueva prueba de este bug). Fase 5 frontend queda `COMPLETE` y verificado en vivo con el backend ya corregido. No se avanza a Fase 6.
+
+## Integración — Fase 5 verificada en instalación limpia (2026-09-07)
+
+La integración entre backend `de7f54b` y frontend `8ece060` quedó satisfactoria. Se creó una base PostgreSQL temporal desde el árbol exacto del commit backend, sin la migración local no confirmada `0024`. El migrador aplicó `0001`–`0023` y `0025`, y una segunda ejecución devolvió `[]`; `0009_identity_access.sql` no bloqueó la instalación. Integraciones de negocio 14/14, HTTP 3/3, frontend 148/148 y typecheck global correcto. Fase 5 mantiene `Integrated = YES`; Fase 6 no se inició en esta integración. Ver `.agents/handoffs/phase5-integration.md`.
