@@ -16,6 +16,25 @@ describe("local-first replication HTTP boundaries", () => {
     expect(replication.receiveEdgeEvent).toHaveBeenCalledWith("00000000-0000-4000-8000-000000000013", "edge-secret", expect.objectContaining({ branchId }));
   });
 
+  it("allows a Cloud user to change only its authorized read context", async () => {
+    const next = { ...context, branches: [context.branches[0]!, { id: otherBranchId, name: "Centro", code: "CTR", settings: {} }], activeBranch: { id: otherBranchId, name: "Centro", code: "CTR", settings: {} } };
+    const setActiveBranch = vi.fn(async () => next); const multiBranchAuth: AuthService = { ...auth, setActiveBranch };
+    const app = buildApi({ database: { check: async () => undefined }, auth: multiBranchAuth, deploymentMode: "cloud" });
+    const response = await app.inject({ method: "POST", url: "/me/active-branch", headers: { authorization: "Bearer user" }, payload: { branchId: otherBranchId } });
+    await app.close(); expect(response.statusCode).toBe(200); expect(setActiveBranch).toHaveBeenCalledWith("user", otherBranchId);
+  });
+
+  it("allows Edge context only for its enrolled branch", async () => {
+    const setActiveBranch = vi.fn(async () => context); const edgeAuth: AuthService = { ...auth, setActiveBranch };
+    const app = buildApi({ database: { check: async () => undefined }, auth: edgeAuth, deploymentMode: "edge", localBranchId: branchId });
+    const response = await app.inject({ method: "POST", url: "/me/active-branch", headers: { authorization: "Bearer user" }, payload: { branchId: otherBranchId } });
+    await app.close(); expect(response.statusCode).toBe(403); expect(setActiveBranch).not.toHaveBeenCalled();
+  });
+  it("keeps Edge health public when its branch guard is enrolled", async () => {
+    const app = buildApi({ database: { check: async () => undefined }, auth, deploymentMode: "edge", localBranchId: otherBranchId });
+    const response = await app.inject({ method: "GET", url: "/health" });
+    await app.close(); expect(response.statusCode).toBe(200); expect(JSON.parse(response.body)).toMatchObject({ status: "ok" });
+  });
   it("does not let Cloud accept operational writes or an Edge browser widen its branch", async () => {
     const cloudApp = buildApi({ database: { check: async () => undefined }, auth, deploymentMode: "cloud" });
     const cloudResponse = await cloudApp.inject({ method: "POST", url: "/sync/devices", headers: { authorization: "Bearer user" }, payload: {} });

@@ -199,3 +199,8 @@ Resultados reales:
 - La suite completa conserva un fallo histórico no relacionado en `workforce.date-mapping.integration`: la aserción fija el día `2026-09-07` mientras la fecha de ejecución es `2026-09-08`. No se modificó dentro de Fase 6.
 
 **Backend Fase 6 queda listo para integración frontend únicamente contra `packages/contracts/src/replication.ts` y rutas `replication/*`.** Claude puede implementar estado/consulta de réplica sobre esos contratos. No debe implementar DEVICE_ONLY, IndexedDB o PULL contra las rutas históricas `/sync/*` sin una decisión/contrato local-first posterior. Fase 7 no se inició.
+## Hotfix de guard local-first — 2026-09-08
+
+- Cloud permite únicamente `POST /me/active-branch` como cambio de contexto de lectura autorizado por la sesión; el candado Cloud mantiene bloqueados los comandos operativos.
+- Edge permite `/health` sin autenticación ni datos sensibles aun cuando está enrolado. Su selector sólo permite su propia sede enrolada.
+- Validado en APIs reales: selector Cloud multi-sede **200**; `/health` de Edge enrolado **200**. Regresiones HTTP 5/5 y typecheck correcto.
