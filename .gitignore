@@ -7,3 +7,6 @@ coverage/
 .runtime/
 bd/postgres-data/
 *.log
+
+infra/edge-windows/.edge.env
+infra/edge-windows/backups/

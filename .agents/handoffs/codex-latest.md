@@ -238,3 +238,7 @@ Ejemplo de metadato común: `{ "freshness": { "branchId": "…", "lastReceivedAt
 ## Para Claude
 
 Consumir únicamente desde la instalación Cloud seleccionando la sede mediante `POST /me/active-branch`; al cambiar sede invalidar todas las consultas `/reports/*`. Mostrar el indicador `freshness` y tratar `stale` como datos potencialmente atrasados. No crear mocks de estas rutas ni enviar IDs de compañía/sede. Fase 8 no se inició.
+
+# Handoff — Edge Windows operativo
+
+Se publicaron artefactos separados para una instalación Edge de Windows: `infra/compose/docker-compose.edge-windows.yml`, scripts `infra/edge-windows/{Bootstrap,Install,Backup,Restore}-DonJuanEdge.ps1` y guía `infra/compose/EDGE_WINDOWS.md`. No modifican `docker-compose.local-first.yml`, no usan Vite, no publican PostgreSQL y no paran ni reutilizan stacks existentes. El bootstrap exige `-ReleaseRef` distinto de `main`; el instalador crea `.edge.env` ignorado por Git con ACL restrictiva, secretos criptográficos, volúmenes persistentes y healthcheck. Cloud permanece opcional: los valores de enrolamiento se agregan después sin recrear los datos.

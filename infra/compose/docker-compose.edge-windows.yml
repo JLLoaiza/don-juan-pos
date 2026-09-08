@@ -1,0 +1,71 @@
+# Operational Edge installation. Run through infra/edge-windows/*.ps1, never with the development compose.
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${EDGE_POSTGRES_DB:-edge}
+      POSTGRES_USER: ${EDGE_POSTGRES_USER:-donjuan}
+      POSTGRES_PASSWORD: ${EDGE_POSTGRES_PASSWORD:?EDGE_POSTGRES_PASSWORD is required}
+    volumes:
+      - edge_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks: [edge_internal]
+
+  migrate:
+    build: { context: ../.., dockerfile: infra/Dockerfile }
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://${EDGE_POSTGRES_USER:-donjuan}:${EDGE_POSTGRES_PASSWORD}@postgres:5432/${EDGE_POSTGRES_DB:-edge}
+    command: node packages/database/dist/cli.js
+    depends_on: { postgres: { condition: service_healthy } }
+    networks: [edge_internal]
+
+  api:
+    build: { context: ../.., dockerfile: infra/Dockerfile }
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${EDGE_POSTGRES_USER:-donjuan}:${EDGE_POSTGRES_PASSWORD}@postgres:5432/${EDGE_POSTGRES_DB:-edge}
+      SERVER_ROLE: edge
+      EDGE_SERVER_ID: ${EDGE_SERVER_ID:-}
+      EDGE_BRANCH_ID: ${EDGE_BRANCH_ID:-}
+      EDGE_INTERNAL_REPLICATION_SECRET: ${EDGE_INTERNAL_REPLICATION_SECRET:-}
+      API_HOST: 0.0.0.0
+      API_PORT: "3000"
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?AUTH_JWT_SECRET is required}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    command: node apps/api/dist/main.js
+    ports: ["${EDGE_API_BIND:-0.0.0.0}:${EDGE_API_PORT:-3000}:3000"]
+    depends_on: { migrate: { condition: service_completed_successfully } }
+    networks: [edge_internal]
+
+  worker:
+    build: { context: ../.., dockerfile: infra/Dockerfile }
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${EDGE_POSTGRES_USER:-donjuan}:${EDGE_POSTGRES_PASSWORD}@postgres:5432/${EDGE_POSTGRES_DB:-edge}
+      SERVER_ROLE: edge
+      WORKER_ID: edge-worker
+      EDGE_SERVER_ID: ${EDGE_SERVER_ID:-}
+      EDGE_SERVER_TOKEN: ${EDGE_SERVER_TOKEN:-}
+      EDGE_INTERNAL_REPLICATION_SECRET: ${EDGE_INTERNAL_REPLICATION_SECRET:-}
+      CLOUD_SYNC_URL: ${CLOUD_SYNC_URL:-}
+      CLOUD_IDENTITY_SYNC_URL: ${CLOUD_IDENTITY_SYNC_URL:-}
+      EDGE_IDENTITY_APPLY_URL: http://api:3000/replication/edge/identity-snapshot
+      PRINT_SINK_DIRECTORY: /runtime/prints
+    command: node apps/worker/dist/main.js
+    volumes: [edge_prints:/runtime/prints]
+    depends_on: { migrate: { condition: service_completed_successfully }, api: { condition: service_started } }
+    networks: [edge_internal]
+
+networks:
+  edge_internal:
+    driver: bridge
+
+volumes:
+  edge_postgres:
+  edge_prints:
