@@ -180,3 +180,16 @@ comprobaron tipos del frontend por esa vía. Se usó `pnpm --filter
 @don-juan/web typecheck` en su lugar, que sí existe y sí es correcto; se
 corrigieron 12 archivos de prueba preexistentes que dejaron de tipar al
 extender `AuthContextValue`/`HttpClient`. No se avanza a Fase 8.
+
+## Nota frontend — Fase 7, revalidación final de invalidación multi-sede (2026-09-08, sin cambios de código)
+
+Se cerró el único punto que había quedado sin verificar en vivo: la
+invalidación de `/reports/*` al cambiar de sede con más de una autorizada.
+Con dos sedes reales en un Cloud desechable (datos y `freshness` deliberadamente
+distintos, una `stale=false` y otra `stale=true`), cambiar de sede con el
+selector ya existente (`POST /me/active-branch`) reemplazó panel, ventas y
+productos por completo — sin ninguna cifra ni fila de la sede anterior — en
+ambos sentidos, y el aviso de datos desactualizados apareció únicamente en
+la sede con `stale=true`. Sin cambios de código; detalle completo en
+`.agents/handoffs/claude-latest.md`. Fase 7 frontend permanece `COMPLETE`;
+no se avanza a Fase 8.

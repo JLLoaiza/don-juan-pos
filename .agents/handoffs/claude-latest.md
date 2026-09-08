@@ -134,12 +134,37 @@ ocupado):
   desechable, sin enrolar): `/reports` mostró únicamente "Los reportes sólo
   existen en la nube", `curl` confirmó `422` en las cuatro rutas.
 
-**No verificado en vivo esta ronda** (por presupuesto de tiempo, no por
-riesgo): la invalidación real al cambiar de sede con más de una sede
-autorizada — se apoya en el mismo patrón de dependencia `branchId` ya
-verificado en vivo en el cierre de Fase 6 para `/replication`, aplicado acá
-de forma idéntica y cubierto por pruebas unitarias (cambio de filtro de
-fecha dispara refetch de los tres reportes, mismo mecanismo).
+## Revalidación final — invalidación multi-sede (2026-09-08, sin cambios de código)
+
+Cierre pendiente del punto anterior: se repitió la verificación en vivo,
+esta vez con **dos sedes autorizadas** para el mismo admin en un Cloud real
+desechable (Postgres + `apps/api` propios, entorno separado del stack de
+Codex que seguía corriendo en la máquina — no se tocó). Datos sembrados
+directamente en `cloud_replica_events`/`cloud_replica_entities`,
+deliberadamente distintos y con `freshness` opuesto por sede:
+
+- **Don Juan Centro**: `edge_servers.last_received_at` hace 2 minutos
+  (`stale=false`); 2 pagos en efectivo, 103000 cobrado; producto
+  "Churrasco Centro".
+- **Don Juan Norte**: `last_received_at` hace 25 minutos (`stale=true`,
+  umbral 15 min); 1 pago QR, 15000 cobrado; producto "Pizza Norte".
+
+Con `apps/web` apuntado a ese Cloud (servidor Vite propio, puerto libre) y
+sesión real: usando **el selector de sede ya existente** (barra superior,
+`POST /me/active-branch`, sin construir nada nuevo) para pasar de Centro a
+Norte, `/reports` reemplazó **por completo** panel, ventas y productos —
+103000→15000, 2→1 pagos, "Churrasco Centro"→"Pizza Norte", sin ninguna fila
+ni cifra de Centro remanente — y el aviso "Datos posiblemente
+desactualizados" apareció en las tres secciones exactamente al entrar a
+Norte (con la hora de última sincronización correcta de Norte), mientras que
+en Centro no aparecía. Se confirmó también el camino inverso
+(Norte→Centro): los datos de Centro volvieron limpios, sin rastro de Norte.
+`read_network_requests` mostró las peticiones reales
+`GET /reports/dashboard|sales|products` disparándose de nuevo tras cada
+cambio de sede, todas `200`. Sin errores de consola.
+
+No se modificó código de frontend, backend, contratos ni migraciones en esta
+ronda — sólo se re-verificó lo ya implementado.
 
 ## Tests
 
