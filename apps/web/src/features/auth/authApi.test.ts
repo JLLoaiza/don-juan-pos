@@ -6,7 +6,8 @@ function fakeHttpClient(): { http: HttpClient; getJson: ReturnType<typeof vi.fn>
   const getJson = vi.fn(async () => ({}) as never);
   const postJson = vi.fn(async () => ({}) as never);
   const putJson = vi.fn(async () => ({}) as never);
-  return { http: { getJson, postJson, putJson }, getJson, postJson };
+  const getBlob = vi.fn(async () => ({}) as never);
+  return { http: { getJson, postJson, putJson, getBlob }, getJson, postJson };
 }
 
 describe("createAuthApi", () => {

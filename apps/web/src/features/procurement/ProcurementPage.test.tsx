@@ -9,7 +9,7 @@ const BRANCH = { id: "b1", name: "Centro", code: "CTR", settings: {} };
 const ID = "11111111-1111-7111-8111-111111111111";
 const purchase = { id: ID, supplierId: null, documentNumber: "FC-001", purchaseDate: "2026-09-07", subtotal: "10", taxTotal: "0", discountTotal: "0", total: "10", paymentMethodId: null, cashSessionId: null, status: "CONFIRMED", notes: null, createdAt: "2026-09-07T12:00:00.000Z", voidedAt: null };
 function context(overrides: Partial<AuthContext> = {}): AuthContext { return { user: { id: "u1", displayName: "Ana" }, branches: [BRANCH], activeBranch: BRANCH, permissions: [], ...overrides }; }
-function authFor(get: ReturnType<typeof vi.fn>, overrides: Partial<AuthContextValue> = {}): AuthContextValue { return { status: "authenticated", context: context(), session: null, isStale: false, staleSince: null, login: vi.fn(), logout: vi.fn(), setActiveBranch: vi.fn(), authGet: get as never, authPost: vi.fn(), authPut: vi.fn(), ...overrides }; }
+function authFor(get: ReturnType<typeof vi.fn>, overrides: Partial<AuthContextValue> = {}): AuthContextValue { return { status: "authenticated", context: context(), session: null, isStale: false, staleSince: null, login: vi.fn(), logout: vi.fn(), setActiveBranch: vi.fn(), authGet: get as never, authPost: vi.fn(), authPut: vi.fn(), authGetBlob: vi.fn(), ...overrides }; }
 const listGet = () => vi.fn((path: string) => Promise.resolve(path === "/suppliers" ? { suppliers: [] } : path === "/purchases" ? { purchases: [purchase] } : { expenses: [] }));
 function renderPage(auth: AuthContextValue) { return render(<AuthReactContext.Provider value={auth}><ProcurementPage /></AuthReactContext.Provider>); }
 afterEach(() => vi.restoreAllMocks());

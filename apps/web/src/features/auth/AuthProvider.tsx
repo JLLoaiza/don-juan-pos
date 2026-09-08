@@ -2,7 +2,7 @@ import { createContext, useCallback, useEffect, useMemo, useRef, useState, type 
 import type { z } from "zod";
 import type { AuthContext as AuthContextData, LoginRequest } from "@don-juan/contracts";
 import { httpClient } from "../../lib/api/client";
-import { ApiRequestError } from "../../lib/api/httpClient";
+import { ApiRequestError, type BlobResult } from "../../lib/api/httpClient";
 import { createAuthApi } from "./authApi";
 import { clearAuthSnapshot, loadAuthSnapshot, saveAuthSnapshot } from "./authCache";
 import { clearSession, loadSession, saveSession, type StoredSession } from "./session";
@@ -34,6 +34,7 @@ export interface AuthContextValue extends AuthState {
   authGet<T>(path: string, schema: z.ZodType<T>): Promise<T>;
   authPost<T>(path: string, schema: z.ZodType<T>, body?: unknown, headers?: Record<string, string>): Promise<T>;
   authPut<T>(path: string, schema: z.ZodType<T>, body?: unknown, headers?: Record<string, string>): Promise<T>;
+  authGetBlob(path: string): Promise<BlobResult>;
 }
 
 export const AuthReactContext = createContext<AuthContextValue | null>(null);
@@ -149,9 +150,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     withAutoRefresh((accessToken) => httpClient.putJson(path, schema, { headers: { authorization: `Bearer ${accessToken}`, ...headers }, body })),
   [withAutoRefresh]);
 
+  const authGetBlob = useCallback((path: string): Promise<BlobResult> =>
+    withAutoRefresh((accessToken) => httpClient.getBlob(path, { headers: { authorization: `Bearer ${accessToken}` } })),
+  [withAutoRefresh]);
+
   const value = useMemo<AuthContextValue>(
-    () => ({ ...state, login, logout, setActiveBranch, authGet, authPost, authPut }),
-    [state, login, logout, setActiveBranch, authGet, authPost, authPut],
+    () => ({ ...state, login, logout, setActiveBranch, authGet, authPost, authPut, authGetBlob }),
+    [state, login, logout, setActiveBranch, authGet, authPost, authPut, authGetBlob],
   );
 
   return <AuthReactContext.Provider value={value}>{children}</AuthReactContext.Provider>;

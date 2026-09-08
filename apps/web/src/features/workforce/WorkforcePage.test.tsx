@@ -9,7 +9,7 @@ const BRANCH = { id: "b1", name: "Centro", code: "CTR", settings: {} };
 const ID = "11111111-1111-7111-8111-111111111111";
 const employee = { id: ID, firstName: "Ana", lastName: "López", documentNumber: null, phone: null, email: null, position: "Cajera", notes: null, active: true, version: 1 };
 function context(overrides: Partial<AuthContext> = {}): AuthContext { return { user: { id: "u1", displayName: "Ana" }, branches: [BRANCH], activeBranch: BRANCH, permissions: [], ...overrides }; }
-function authFor(get: ReturnType<typeof vi.fn>, overrides: Partial<AuthContextValue> = {}): AuthContextValue { return { status: "authenticated", context: context(), session: null, isStale: false, staleSince: null, login: vi.fn(), logout: vi.fn(), setActiveBranch: vi.fn(), authGet: get as never, authPost: vi.fn(), authPut: vi.fn(), ...overrides }; }
+function authFor(get: ReturnType<typeof vi.fn>, overrides: Partial<AuthContextValue> = {}): AuthContextValue { return { status: "authenticated", context: context(), session: null, isStale: false, staleSince: null, login: vi.fn(), logout: vi.fn(), setActiveBranch: vi.fn(), authGet: get as never, authPost: vi.fn(), authPut: vi.fn(), authGetBlob: vi.fn(), ...overrides }; }
 const emptyGet = vi.fn((path: string) => Promise.resolve(path === "/employees" ? { employees: [] } : path === "/employee-shifts" ? { shifts: [] } : path === "/employee-bonuses" ? { bonuses: [] } : { payments: [] }));
 function renderPage(auth: AuthContextValue) { return render(<AuthReactContext.Provider value={auth}><WorkforcePage /></AuthReactContext.Provider>); }
 

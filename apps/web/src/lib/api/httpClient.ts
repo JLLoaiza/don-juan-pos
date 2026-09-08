@@ -27,10 +27,18 @@ export interface RequestOptions {
   readonly body?: unknown;
 }
 
+export interface BlobResult {
+  readonly blob: Blob;
+  /** Parsed from Content-Disposition when the server sets one; null otherwise. */
+  readonly filename: string | null;
+}
+
 export interface HttpClient {
   getJson<T>(path: string, schema: z.ZodType<T>, options?: RequestOptions): Promise<T>;
   postJson<T>(path: string, schema: z.ZodType<T>, options?: RequestOptions): Promise<T>;
   putJson<T>(path: string, schema: z.ZodType<T>, options?: RequestOptions): Promise<T>;
+  /** For endpoints that return a file (e.g. CSV export) instead of JSON. */
+  getBlob(path: string, options?: Pick<RequestOptions, "headers">): Promise<BlobResult>;
 }
 
 async function readErrorBody(response: Response): Promise<unknown> {
@@ -73,9 +81,32 @@ export function createHttpClient({ baseUrl, fetchImpl }: HttpClientConfig): Http
     return schema.parse(data);
   }
 
+  async function getBlob(path: string, options: Pick<RequestOptions, "headers"> = {}): Promise<BlobResult> {
+    const doFetch = fetchImpl ?? globalThis.fetch;
+    let response: Response;
+    try {
+      response = await doFetch(`${baseUrl}${path}`, { method: "GET", headers: { ...options.headers } });
+    } catch {
+      throw new ApiRequestError(`No se pudo contactar ${baseUrl}${path}.`, "network");
+    }
+
+    if (!response.ok) {
+      const body = await readErrorBody(response);
+      const parsed = ApiErrorSchema.safeParse(body);
+      const message = parsed.success ? parsed.data.message : `Error HTTP ${response.status}`;
+      throw new ApiRequestError(message, "http", response.status, parsed.success ? parsed.data : undefined);
+    }
+
+    const blob = await response.blob();
+    const disposition = response.headers.get("content-disposition");
+    const match = disposition ? /filename="?([^";]+)"?/i.exec(disposition) : null;
+    return { blob, filename: match?.[1] ?? null };
+  }
+
   return {
     getJson: (path, schema, options) => send("GET", path, schema, options),
     postJson: (path, schema, options) => send("POST", path, schema, options),
     putJson: (path, schema, options) => send("PUT", path, schema, options),
+    getBlob,
   };
 }

@@ -13,7 +13,7 @@ Estados usados: `PENDING` (no iniciado), `READY` (desbloqueado pero no iniciado)
 | Fase 4 | Cobro: descuentos, servicio, divisiones, pagos, caja | COMPLETE | COMPLETE | YES |
 | Fase 5 | Compras, gastos, Kardex, empleados | COMPLETE | COMPLETE | YES |
 | Fase 6 | Local-first: servidor por sede + réplica cloud (`replication/*`) | COMPLETE | COMPLETE (`/replication`: estado y consulta de réplica reales, selector multi-sede en Cloud y `/health` público en Edge, verificados en vivo tras `ac5181e`) | - |
-| Fase 7 | Reportes y operación a escala | COMPLETE (Cloud read-only: dashboard, ventas, productos y export CSV) | PENDING (placeholder en `/reports`) | - |
+| Fase 7 | Reportes y operación a escala | COMPLETE (Cloud read-only: dashboard, ventas, productos y export CSV) | COMPLETE (`/reports` contra Cloud real; bloqueo 422 claro en Edge) | - |
 
 ## Notas de la fase actual (Fase 1, frontend)
 
@@ -149,3 +149,34 @@ regresión (`grep` limpio de `/sync`, `IndexedDB`, `DEVICE_ONLY`). `pnpm -w
 typecheck` correcto; `pnpm --filter @don-juan/web test` 159/159 (2 pruebas
 nuevas, una reescrita). No se avanza a Fase 7. Detalle completo en
 `.agents/handoffs/claude-latest.md` y `.agents/coordination.md`.
+
+## Nota frontend — Fase 7, reportes Cloud (2026-09-08)
+
+Frontend `COMPLETE` contra `packages/contracts/src/reports.ts` y las cuatro
+rutas `GET /reports/dashboard|sales|products` y `GET /reports/sales/export.csv`
+(backend `9b41eb9`). Pantalla nueva `/reports` (reemplaza el placeholder):
+panel + ventas + productos independientes por sección (un permiso faltante
+en una no bloquea las otras), filtro de fechas compartido (atajos + rango
+manual, `[from, to)` en UTC), `freshness`/`stale` siempre visibles, costo y
+margen sólo cuando el backend los incluye (`reports.view_costs`), CSV
+exportado descargando el archivo real del servidor (nuevo `getBlob`/
+`authGetBlob`/`saveBlob` en la capa HTTP compartida, no generado en el
+navegador). En Edge, las cuatro rutas responden `422` y el frontend muestra
+un único mensaje claro sin intentar construir una alternativa local.
+
+Verificado en vivo contra un Cloud real (datos sembrados directamente en
+`cloud_replica_events`/`cloud_replica_entities`, ya que el pipeline
+Edge→worker→réplica se validó a fondo en el cierre de Fase 6) y contra un
+Edge real (`422` confirmado, mensaje único en pantalla). También en vivo:
+revocar `reports.view_costs` en la base hace desaparecer las columnas de
+costo del panel y de productos sin recargar sesión. `pnpm --filter
+@don-juan/web typecheck` y `pnpm -w typecheck`: correctos. `pnpm --filter
+@don-juan/web test`: 177/177.
+
+Hallazgo aparte, documentado en `.agents/coordination.md`: `pnpm -w
+typecheck` nunca incluyó `apps/web` en su grafo compuesto (el `tsconfig.json`
+raíz no lo referencia), así que los cierres de fase anteriores nunca
+comprobaron tipos del frontend por esa vía. Se usó `pnpm --filter
+@don-juan/web typecheck` en su lugar, que sí existe y sí es correcto; se
+corrigieron 12 archivos de prueba preexistentes que dejaron de tipar al
+extender `AuthContextValue`/`HttpClient`. No se avanza a Fase 8.

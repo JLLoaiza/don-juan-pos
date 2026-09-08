@@ -372,3 +372,42 @@ corriendo, puede necesitar reiniciarlos manualmente.
 **Estado.** Fase 6 frontend queda `COMPLETE`. `pnpm -w typecheck` correcto;
 `pnpm --filter @don-juan/web test` 159/159. No se avanza a Fase 7. Detalle
 completo en `.agents/handoffs/claude-latest.md`.
+
+## 2026-09-08 — `pnpm -w typecheck` nunca cubrió `apps/web`; usar `pnpm --filter @don-juan/web typecheck`
+
+**Hallazgo.** Al implementar Fase 7 (reportes) fue necesario extender
+`HttpClient` (`apps/web/src/lib/api/httpClient.ts`) y `AuthContextValue`
+(`apps/web/src/features/auth/AuthProvider.tsx`) con un método nuevo
+(`getBlob`/`authGetBlob`, para descargar el CSV real en vez de generarlo en
+el navegador). Ese cambio de interfaz rompió el tipado de **12 archivos de
+prueba preexistentes** de fases 1-6 que construían un mock completo de esas
+interfaces. Al investigar por qué `pnpm -w typecheck` — usado y reportado
+como "correcto" en el cierre de todas las fases anteriores, incluidas las
+mías — no detectaba nada, confirmé que el `tsconfig.json` raíz (`"references"`)
+sólo incluye `packages/contracts`, `domain`, `database`, `ui`, `apps/api` y
+`apps/worker`. **`apps/web` nunca formó parte de ese grafo compuesto.**
+
+**Alcance real del hallazgo.** Todo "`pnpm -w typecheck`: correcto" reportado
+para trabajo de frontend en handoffs anteriores (Fases 1-6, incluidos los
+míos) certificó el build del backend, no el tipado de `apps/web`. La única
+verificación real que sí corría era `pnpm --filter @don-juan/web test`
+(vitest, transpila con esbuild — detecta errores de sintaxis y de
+ejecución, no errores de tipos). No hay evidencia de que esto haya
+enmascarado un bug real en el código ya mergeado (los 12 archivos rotos
+eran todos de pruebas, no de código de producción, y las pruebas seguían
+pasando en tiempo de ejecución), pero es una brecha real de cobertura.
+
+**Corrección aplicada esta vez.** Usé `pnpm --filter @don-juan/web typecheck`
+(`tsc -p tsconfig.json --noEmit`, script propio de `apps/web` que sí existe
+y sí es correcto) para encontrar y corregir los 12 archivos y un `match[1]`
+posiblemente `undefined` en mi propio `getBlob`. No toqué el `tsconfig.json`
+raíz.
+
+**Pendiente/sugerencia.** Incorporar `apps/web` al grafo compuesto de
+`tsc -b` (requiere volverlo un proyecto TS `composite: true` con
+`references` propias) para que `pnpm -w typecheck` vuelva a ser una
+garantía real de todo el repositorio. Es un cambio de infraestructura
+compartida; no lo hice unilateralmente por quedar fuera del alcance de
+"Fase 7 frontend". Mientras tanto, cualquier cierre de fase de frontend
+debe correr **ambos** comandos: `pnpm -w typecheck` (backend) y
+`pnpm --filter @don-juan/web typecheck` (frontend).

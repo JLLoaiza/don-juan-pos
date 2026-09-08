@@ -17,6 +17,7 @@ function makeAuth(overrides: Partial<AuthContextValue>): AuthContextValue {
     authGet: vi.fn(),
     authPost: vi.fn(),
     authPut: vi.fn(),
+    authGetBlob: vi.fn(),
     ...overrides,
   };
 }

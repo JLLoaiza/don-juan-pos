@@ -79,4 +79,51 @@ describe("createHttpClient", () => {
       body: JSON.stringify({ a: 1 }),
     });
   });
+
+  describe("getBlob", () => {
+    it("returns the response body as a Blob with the filename from Content-Disposition", async () => {
+      const fetchImpl = vi.fn(async () =>
+        new Response("a,b\n1,2", {
+          status: 200,
+          headers: { "content-disposition": 'attachment; filename="reports-sales.csv"' },
+        }),
+      );
+      const client = createHttpClient({ baseUrl: "http://api.local", fetchImpl: fetchImpl as unknown as typeof fetch });
+
+      const result = await client.getBlob("/reports/sales/export.csv", { headers: { authorization: "Bearer t" } });
+
+      expect(fetchImpl).toHaveBeenCalledWith("http://api.local/reports/sales/export.csv", {
+        method: "GET",
+        headers: { authorization: "Bearer t" },
+      });
+      expect(result.filename).toBe("reports-sales.csv");
+      expect(await result.blob.text()).toBe("a,b\n1,2");
+    });
+
+    it("returns a null filename when the server sends no Content-Disposition", async () => {
+      const fetchImpl = vi.fn(async () => new Response("data", { status: 200 }));
+      const client = createHttpClient({ baseUrl: "http://api.local", fetchImpl: fetchImpl as unknown as typeof fetch });
+
+      const result = await client.getBlob("/thing");
+
+      expect(result.filename).toBeNull();
+    });
+
+    it("throws an http ApiRequestError with the parsed API error on non-2xx", async () => {
+      const body = { code: "FORBIDDEN", message: "Permission reports.export is required" };
+      const fetchImpl = vi.fn(async () => new Response(JSON.stringify(body), { status: 403 }));
+      const client = createHttpClient({ baseUrl: "http://api.local", fetchImpl: fetchImpl as unknown as typeof fetch });
+
+      await expect(client.getBlob("/thing")).rejects.toMatchObject({ kind: "http", status: 403, message: body.message });
+    });
+
+    it("throws a network ApiRequestError when fetch rejects", async () => {
+      const fetchImpl = vi.fn(async () => {
+        throw new Error("boom");
+      });
+      const client = createHttpClient({ baseUrl: "http://api.local", fetchImpl: fetchImpl as unknown as typeof fetch });
+
+      await expect(client.getBlob("/thing")).rejects.toMatchObject({ kind: "network" });
+    });
+  });
 });
