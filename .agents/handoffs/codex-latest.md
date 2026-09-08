@@ -129,3 +129,51 @@ El frontend no debe pedir UUIDs al operador: conserva `deviceId` y `operationId`
 ## Pendiente de integración
 
 Frontend Fase 6 debe implementar IndexedDB, cola persistente, aplicación de PULL, visualización/resolución UX de conflictos e indicadores ONLINE/LOCAL_ONLY/DEVICE_ONLY contra estos contratos. La configuración/infraestructura de una Cloud consolidada real sigue requiriendo URL, credencial de servicio y receptor Cloud desplegado; no bloquea el backend Edge ni autoriza una segunda escritura operacional.
+# Handoff — Fase 6 local-first Edge/Cloud (backend listo para integración)
+
+> Este handoff **sustituye** el cierre anterior de Fase 6 basado sólo en sincronización por dispositivo. La fuente de verdad es `.agents/architecture/local-first-edge-replication.md`.
+
+## Modelo implementado
+
+- Cada sede ejecuta una instalación `SERVER_ROLE=edge`: API, PostgreSQL local, impresión y worker. Los clientes LAN comparten esa base; si cae WAN, los comandos y la impresión siguen confirmando localmente.
+- `SERVER_ROLE=cloud` rechaza toda escritura operacional normal. Recibe exclusivamente hechos ya confirmados por un Edge enrolado y sirve consulta administrativa por sede.
+- El Edge persiste dominio + `sync_outbox` dentro de la misma transacción. Catálogo ahora también escribe outbox; salón, pagos, caja, compras y personal ya lo hacían.
+- El worker reclama con `FOR UPDATE SKIP LOCKED`, envía con `Idempotency-Key` y `X-Edge-Server-Id`, y sólo marca `DELIVERED` tras ACK. Fallos WAN quedan `PENDING`/`FAILED` con backoff sin bloquear operación local.
+- El Cloud deduce la sede desde `edge_servers`; compara el `branchId` del sobre sólo como defensa y rechaza cualquier intento de ampliar alcance. `cloud_replica_events` es idempotente por `(edge_server_id, operation_id)` y `cloud_replica_entities` mantiene la proyección de consulta por sede.
+
+## Enrolamiento y credenciales
+
+| Ruta Cloud | Autoridad | Uso |
+| --- | --- | --- |
+| `POST /replication/cloud/enrollment-tokens` | usuario activo + `replication.servers.manage` | Emite token de un solo uso para la sede activa; no acepta `branchId`. |
+| `POST /replication/cloud/enroll` | token de instalación | Lo consume y devuelve una sola vez `edgeServerId`, `branchId`, `edgeServerToken`. |
+| `POST /replication/cloud/events` | `Bearer edgeServerToken` + `X-Edge-Server-Id` | Recibe un hecho confirmado y retorna `ACCEPTED` o `DUPLICATE` con cursor de recibo. |
+| `GET /replication/cloud/identity-snapshot` | misma identidad técnica | Entrega sólo usuarios, hashes de contraseña, roles y permisos ya autorizados para la sede enrolada. |
+
+El instalador guarda `EDGE_SERVER_ID`, `EDGE_BRANCH_ID` y `EDGE_SERVER_TOKEN` como secretos del servidor Edge. Un Edge no puede reasignarse a otra sede: `edge_local_identity` lo bloquea. `EDGE_INTERNAL_REPLICATION_SECRET` protege el canal worker→API local que aplica snapshots de identidad. No se entrega ninguno de esos secretos a un navegador.
+
+## Estado y consulta
+
+- `GET /replication/status` requiere `replication.status.view`. En Edge retorna cola/outbox local; en Cloud retorna servidor asignado, eventos, última recepción y `stale`.
+- `GET /replication/cloud/entities` consulta la réplica de la sede activa. Oculta campos de costo salvo que el usuario tenga `products.view_cost` e `inventory.view_cost`.
+- La petición técnica de snapshot funciona también como heartbeat: Cloud actualiza `last_received_at` incluso si no hubo ventas.
+
+## Despliegue de desarrollo
+
+`infra/compose/docker-compose.local-first.yml` define PostgreSQL/API separados para Cloud y Edge. `infra/compose/LOCAL_FIRST.md` describe la secuencia de enrolamiento. Ambos extremos arrancan sin WAN; el worker sólo activa entrega/pull si todos los secretos/URLs correspondientes están configurados.
+
+## Contratos publicados
+
+`packages/contracts/src/replication.ts` publica enrolamiento, envolvente Edge→Cloud, estado/proyección y `CloudIdentitySnapshotSchema`. No hay `companyId`/`branchId` de navegador que autorice rutas operativas; el único `branchId` interno del sobre Edge se valida contra la identidad enrolada.
+
+## Pruebas
+
+- `pnpm -w typecheck`: correcto.
+- API disponible sin PostgreSQL: 48 pruebas correctas; HTTP de fronteras local/Cloud 2/2.
+- Worker: 4/4, incluidos transportes con identidad técnica.
+- `apps/api/src/replication.integration.test.ts` está preparada para dos instalaciones (`DATABASE_URL_TEST` Edge y `DATABASE_URL_CLOUD_TEST` Cloud): cubre dos clientes locales durante WAN, outbox/ACK idempotente, rechazo cross-branch y login offline tras snapshot Cloud de credencial/permiso.
+- Esa integración y la migración `0027` **no se pudieron ejecutar en este entorno**: Docker Desktop no tiene daemon disponible (`dockerDesktopLinuxEngine`/puerto 5433 rechazado). No se afirma validación PostgreSQL separada hasta ejecutarla con ambos servicios.
+
+## Pendiente para integración
+
+Claude puede construir UI de estado/salud de réplica sobre los contratos cuando la integración PostgreSQL separada esté aprobada. No se inició Fase 7, no hay edición operativa Cloud→sede, catálogo global ni facturación electrónica.

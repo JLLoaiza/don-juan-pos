@@ -32,6 +32,9 @@ export class CatalogService {
     });
   }
 
+  private async outbox(client: PoolClient, actor: CatalogActor, operationId: string, commandName: string, entityType: string, entityId: string, payload: unknown): Promise<void> {
+    await client.query(`INSERT INTO sync_outbox(branch_id,operation_id,command_name,aggregate_type,aggregate_id,payload) VALUES($1,$2,$3,$4,$5,$6)`, [actor.branchId,operationId,commandName,entityType,entityId,payload]);
+  }
   private async audit(client: PoolClient, actor: CatalogActor, companyId: string, action: string, entityType: string, entityId: string, before: unknown, after: unknown): Promise<void> {
     await client.query(`INSERT INTO audit_logs(company_id,branch_id,user_id,action,entity_type,entity_id,before_data,after_data) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, [companyId, actor.branchId, actor.userId, action, entityType, entityId, before, after]);
   }
@@ -43,7 +46,7 @@ export class CatalogService {
         `INSERT INTO inventory_items(id,branch_id,name,unit,unit_cost,current_stock,minimum_stock,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,name,unit,unit_cost,current_stock,minimum_stock,notes,active,version`, [id,actor.branchId,input.name,input.unit,input.initialUnitCost,input.initialStock,input.minimumStock,input.notes ?? null]);
       if (!row) throw new Error("Inventory insert did not return a row");
       if (input.initialStock !== "0") await client.query(`INSERT INTO inventory_movements(id,branch_id,inventory_item_id,movement_type,quantity,unit_cost,stock_before,stock_after,source_type,source_id,reason,created_by_user_id) VALUES($1,$2,$3,'CORRECTION',$4,$5,0,$4,'CATALOG_SETUP',$3,'Initial inventory setup',$6)`, [uuidv7(),actor.branchId,id,input.initialStock,input.initialUnitCost,actor.userId]);
-      const result = this.inventoryResult(row, true); await this.audit(client,actor,companyId,"inventory_item.created","inventory_item",id,null,result); return result;
+      const result = this.inventoryResult(row, true); await this.audit(client,actor,companyId,"inventory_item.created","inventory_item",id,null,result); await this.outbox(client,actor,operationId,"inventory.create","inventory_item",id,result); return result;
     });
   }
 
@@ -52,7 +55,7 @@ export class CatalogService {
       const before = await one<{ id:string; version:number }>(client,"SELECT id,version FROM inventory_items WHERE id=$1 AND branch_id=$2 FOR UPDATE",[id,actor.branchId]);
       if (!before) throw new CatalogRuleViolation("Inventory item was not found in the active branch"); if(Number(before.version) !== input.expectedVersion) throw new CatalogConflict();
       const row=await one<any>(client,"UPDATE inventory_items SET name=$3,minimum_stock=$4,notes=$5,active=$6 WHERE id=$1 AND branch_id=$2 RETURNING id,name,unit,unit_cost,current_stock,minimum_stock,notes,active,version",[id,actor.branchId,input.name,input.minimumStock,input.notes??null,input.active]);
-      const result=this.inventoryResult(row,true); await this.audit(client,actor,companyId,"inventory_item.updated","inventory_item",id,before,result); return result;
+      const result=this.inventoryResult(row,true); await this.audit(client,actor,companyId,"inventory_item.updated","inventory_item",id,before,result); await this.outbox(client,actor,operationId,"inventory.update","inventory_item",id,result); return result;
     });
   }
 
@@ -63,7 +66,7 @@ export class CatalogService {
       const after=await one<{current_stock:string;version:number}>(client,"UPDATE inventory_items SET current_stock=current_stock+$3 WHERE id=$1 AND branch_id=$2 RETURNING current_stock,version",[id,actor.branchId,input.quantityDelta]);
       if(!after) throw new Error("Inventory adjustment failed");
       await client.query(`INSERT INTO inventory_movements(id,branch_id,inventory_item_id,movement_type,quantity,unit_cost,stock_before,stock_after,source_type,source_id,reason,created_by_user_id) VALUES($1,$2,$3,'MANUAL_ADJUSTMENT',$4,$5,$6,$7,'INVENTORY_ADJUSTMENT',$8,$9,$10)`,[uuidv7(),actor.branchId,id,input.quantityDelta,before.unit_cost,before.current_stock,after.current_stock,operationId,input.reason,actor.userId]);
-      const result={ id, previousStock:before.current_stock,currentStock:after.current_stock,stockState:stockState(after.current_stock,"0"),version:Number(after.version) }; await this.audit(client,actor,companyId,"inventory_item.adjusted","inventory_item",id,{currentStock:before.current_stock},result); return result;
+      const result={ id, previousStock:before.current_stock,currentStock:after.current_stock,stockState:stockState(after.current_stock,"0"),version:Number(after.version) }; await this.audit(client,actor,companyId,"inventory_item.adjusted","inventory_item",id,{currentStock:before.current_stock},result); await this.outbox(client,actor,operationId,"inventory.adjust","inventory_item",id,result); return result;
     });
   }
 
@@ -77,7 +80,7 @@ export class CatalogService {
       else { const active=(input as UpdateAccompanimentRequest).active; await client.query("UPDATE accompaniments SET name=$3,default_price=$4,notes=$5,active=$6 WHERE id=$1 AND branch_id=$2",[id,actor.branchId,input.name,input.defaultPrice,input.notes??null,active]); await client.query("DELETE FROM accompaniment_components WHERE accompaniment_id=$1",[id]); }
       for(const component of input.components) await client.query("INSERT INTO accompaniment_components(id,accompaniment_id,inventory_item_id,quantity) VALUES($1,$2,$3,$4)",[uuidv7(),id,component.inventoryItemId,component.quantity]);
       await this.recalculateProductsForAccompaniments(client,[id]);
-      const result=await this.accompaniment(client,id,true); await this.audit(client,actor,companyId,creating?"accompaniment.created":"accompaniment.updated","accompaniment",id,null,result); return result;
+      const result=await this.accompaniment(client,id,true); await this.audit(client,actor,companyId,creating?"accompaniment.created":"accompaniment.updated","accompaniment",id,null,result); await this.outbox(client,actor,operationId,creating?"accompaniments.create":"accompaniments.update","accompaniment",id,result); return result;
     });
   }
 
@@ -91,11 +94,11 @@ export class CatalogService {
       else { const active=(input as UpdateProductRequest).active; await client.query("UPDATE products SET name=$3,description=$4,sale_price=$5,notes=$6,active=$7 WHERE id=$1 AND branch_id=$2",[id,actor.branchId,input.name,input.description??null,input.salePrice,input.notes??null,active]); await client.query("DELETE FROM product_components WHERE product_id=$1",[id]); await client.query("DELETE FROM product_additional_accompaniments WHERE product_id=$1",[id]); }
       for(const component of input.components) await client.query(component.type==="INVENTORY_ITEM"?"INSERT INTO product_components(id,product_id,component_type,inventory_item_id,quantity) VALUES($1,$2,'INVENTORY_ITEM',$3,$4)":"INSERT INTO product_components(id,product_id,component_type,accompaniment_id,quantity) VALUES($1,$2,'ACCOMPANIMENT',$3,$4)",component.type==="INVENTORY_ITEM"?[uuidv7(),id,component.inventoryItemId,component.quantity]:[uuidv7(),id,component.accompanimentId,component.quantity]);
       for(const additional of input.additionals) await client.query("INSERT INTO product_additional_accompaniments(id,product_id,accompaniment_id,price_override,allow_free,sort_order,active) VALUES($1,$2,$3,$4,$5,$6,$7)",[uuidv7(),id,additional.accompanimentId,additional.priceOverride??null,additional.allowFree,additional.sortOrder,additional.active]);
-      await this.recalculateProducts(client,[id]); const result=await this.product(client,id,true); await this.audit(client,actor,companyId,creating?"product.created":"product.updated","product",id,null,result); return result;
+      await this.recalculateProducts(client,[id]); const result=await this.product(client,id,true); await this.audit(client,actor,companyId,creating?"product.created":"product.updated","product",id,null,result); await this.outbox(client,actor,operationId,creating?"products.create":"products.update","product",id,result); return result;
     });
   }
 
-  async updateProductPrice(actor: CatalogActor, operationId:string,id:string,input:UpdateProductPriceRequest){return this.command(actor,operationId,"products.price",{id,...input},async(client,companyId)=>{const row=await one<{version:number;calculated_cost:string}>(client,"SELECT version,calculated_cost FROM products WHERE id=$1 AND branch_id=$2 FOR UPDATE",[id,actor.branchId]);if(!row)throw new CatalogRuleViolation("Product was not found in the active branch");if(Number(row.version)!==input.expectedVersion)throw new CatalogConflict();if(input.targetMarginPercent!==undefined&&compareDecimals(input.targetMarginPercent,"100")>=0)throw new CatalogRuleViolation("Target margin must be less than 100 percent");const result=await one<any>(client,"UPDATE products SET sale_price=CASE WHEN $3::numeric IS NOT NULL THEN $3::numeric WHEN $4::numeric IS NOT NULL THEN calculated_cost+$4::numeric ELSE calculated_cost/(1-($5::numeric/100)) END WHERE id=$1 AND branch_id=$2 RETURNING id,name,description,sale_price,calculated_cost,active,version",[id,actor.branchId,input.salePrice??null,input.targetProfit??null,input.targetMarginPercent??null]);if(!result)throw new Error("Pricing update failed");const product=await this.product(client,id,true);await this.audit(client,actor,companyId,"product.price_updated","product",id,null,product);return product;});}
+  async updateProductPrice(actor: CatalogActor, operationId:string,id:string,input:UpdateProductPriceRequest){return this.command(actor,operationId,"products.price",{id,...input},async(client,companyId)=>{const row=await one<{version:number;calculated_cost:string}>(client,"SELECT version,calculated_cost FROM products WHERE id=$1 AND branch_id=$2 FOR UPDATE",[id,actor.branchId]);if(!row)throw new CatalogRuleViolation("Product was not found in the active branch");if(Number(row.version)!==input.expectedVersion)throw new CatalogConflict();if(input.targetMarginPercent!==undefined&&compareDecimals(input.targetMarginPercent,"100")>=0)throw new CatalogRuleViolation("Target margin must be less than 100 percent");const result=await one<any>(client,"UPDATE products SET sale_price=CASE WHEN $3::numeric IS NOT NULL THEN $3::numeric WHEN $4::numeric IS NOT NULL THEN calculated_cost+$4::numeric ELSE calculated_cost/(1-($5::numeric/100)) END WHERE id=$1 AND branch_id=$2 RETURNING id,name,description,sale_price,calculated_cost,active,version",[id,actor.branchId,input.salePrice??null,input.targetProfit??null,input.targetMarginPercent??null]);if(!result)throw new Error("Pricing update failed");const product=await this.product(client,id,true);await this.audit(client,actor,companyId,"product.price_updated","product",id,null,product);await this.outbox(client,actor,operationId,"products.price","product",id,product);return product;});}
 
   async snapshot(actor: CatalogActor, includeCosts: boolean): Promise<CatalogSnapshot> { const client=await this.pool.connect(); try { const inventory=(await client.query<any>("SELECT id,name,unit,unit_cost,current_stock,minimum_stock,notes,active,version FROM inventory_items WHERE branch_id=$1 ORDER BY name",[actor.branchId])).rows.map((row)=>this.inventoryResult(row,includeCosts)); const accompaniments=[] as any[]; for(const row of (await client.query<{id:string}>("SELECT id FROM accompaniments WHERE branch_id=$1 ORDER BY name",[actor.branchId])).rows) accompaniments.push(await this.accompaniment(client,row.id,includeCosts)); const products=[] as any[]; for(const row of (await client.query<{id:string}>("SELECT id FROM products WHERE branch_id=$1 ORDER BY name",[actor.branchId])).rows) products.push(await this.product(client,row.id,includeCosts)); return {inventoryItems:inventory,accompaniments,products}; } finally {client.release();} }
 

@@ -12,3 +12,5 @@ export * from './procurement.js';
 export * from './workforce.js';
 
 export * from './sync.js';
+
+export * from "./replication.js";

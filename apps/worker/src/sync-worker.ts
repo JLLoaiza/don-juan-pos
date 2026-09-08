@@ -17,7 +17,7 @@ export interface SyncOutboxTransport { deliver(event: ClaimedSyncOutboxEvent): P
 
 /** HTTPS transport only: the Cloud endpoint and Edge service credential are deployment configuration, never client input. */
 export class HttpSyncOutboxTransport implements SyncOutboxTransport {
-  public constructor(private readonly endpoint: string, private readonly token: string) {}
+  public constructor(private readonly endpoint: string, private readonly edgeServerId: string, private readonly token: string) {}
 
   public async deliver(event: ClaimedSyncOutboxEvent): Promise<void> {
     const response = await fetch(this.endpoint, {
@@ -26,6 +26,7 @@ export class HttpSyncOutboxTransport implements SyncOutboxTransport {
         "content-type": "application/json",
         authorization: `Bearer ${this.token}`,
         "idempotency-key": event.operationId,
+        "x-edge-server-id": this.edgeServerId,
       },
       body: JSON.stringify({ protocolVersion: 1, event: {
         branchId: event.branchId, operationId: event.operationId, commandName: event.commandName,

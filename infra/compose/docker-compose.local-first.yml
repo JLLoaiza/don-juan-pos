@@ -1,0 +1,71 @@
+# Two isolated installations for local-first development.
+# 1) Start cloud: docker compose -f infra/compose/docker-compose.local-first.yml up --build cloud-postgres cloud-migrate cloud-api
+# 2) Create/claim an enrollment in Cloud, set EDGE_SERVER_ID / EDGE_BRANCH_ID / EDGE_SERVER_TOKEN in .env.
+# 3) Start edge services. Its clients use the Edge API on the LAN; no WAN dependency exists for operations.
+services:
+  cloud-postgres:
+    image: postgres:17
+    environment: { POSTGRES_DB: cloud, POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres }
+    ports: ["${CLOUD_POSTGRES_PORT:-5434}:5432"]
+    volumes: [cloud_postgres:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d cloud"], interval: 5s, timeout: 5s, retries: 20 }
+  cloud-migrate:
+    build: { context: ../.., dockerfile: infra/Dockerfile }
+    environment: { DATABASE_URL: postgresql://postgres:postgres@cloud-postgres:5432/cloud }
+    command: node packages/database/dist/cli.js
+    depends_on: { cloud-postgres: { condition: service_healthy } }
+  cloud-api:
+    build: { context: ../.., dockerfile: infra/Dockerfile }
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@cloud-postgres:5432/cloud
+      SERVER_ROLE: cloud
+      API_HOST: 0.0.0.0
+      API_PORT: "3000"
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-development-only-auth-secret-change-before-production-2026}
+    command: node apps/api/dist/main.js
+    ports: ["${CLOUD_API_PORT:-3100}:3000"]
+    depends_on: { cloud-migrate: { condition: service_completed_successfully } }
+  edge-postgres:
+    image: postgres:17
+    environment: { POSTGRES_DB: edge, POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres }
+    ports: ["${EDGE_POSTGRES_PORT:-5433}:5432"]
+    volumes: [edge_postgres:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d edge"], interval: 5s, timeout: 5s, retries: 20 }
+  edge-migrate:
+    build: { context: ../.., dockerfile: infra/Dockerfile }
+    environment: { DATABASE_URL: postgresql://postgres:postgres@edge-postgres:5432/edge }
+    command: node packages/database/dist/cli.js
+    depends_on: { edge-postgres: { condition: service_healthy } }
+  edge-api:
+    build: { context: ../.., dockerfile: infra/Dockerfile }
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@edge-postgres:5432/edge
+      SERVER_ROLE: edge
+      EDGE_SERVER_ID: ${EDGE_SERVER_ID:-}
+      EDGE_BRANCH_ID: ${EDGE_BRANCH_ID:-}
+      EDGE_INTERNAL_REPLICATION_SECRET: ${EDGE_INTERNAL_REPLICATION_SECRET:-}
+      API_HOST: 0.0.0.0
+      API_PORT: "3000"
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-development-only-auth-secret-change-before-production-2026}
+    command: node apps/api/dist/main.js
+    ports: ["${EDGE_API_PORT:-3000}:3000"]
+    depends_on: { edge-migrate: { condition: service_completed_successfully } }
+  edge-worker:
+    build: { context: ../.., dockerfile: infra/Dockerfile }
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@edge-postgres:5432/edge
+      SERVER_ROLE: edge
+      EDGE_SERVER_ID: ${EDGE_SERVER_ID:-}
+      EDGE_SERVER_TOKEN: ${EDGE_SERVER_TOKEN:-}
+      EDGE_INTERNAL_REPLICATION_SECRET: ${EDGE_INTERNAL_REPLICATION_SECRET:-}
+      CLOUD_SYNC_URL: ${CLOUD_SYNC_URL:-}
+      CLOUD_IDENTITY_SYNC_URL: ${CLOUD_IDENTITY_SYNC_URL:-}
+      EDGE_IDENTITY_APPLY_URL: http://edge-api:3000/replication/edge/identity-snapshot
+      PRINT_SINK_DIRECTORY: /runtime/prints
+    command: node apps/worker/dist/main.js
+    volumes: [edge_prints:/runtime/prints]
+    depends_on: { edge-migrate: { condition: service_completed_successfully }, edge-api: { condition: service_started } }
+volumes:
+  cloud_postgres:
+  edge_postgres:
+  edge_prints:
