@@ -12,7 +12,7 @@ import { CashPage } from "./features/cash/CashPage";
 import { ProcurementPage } from "./features/procurement/ProcurementPage";
 import { WorkforcePage } from "./features/workforce/WorkforcePage";
 import { ReportsPage } from "./features/reports/ReportsPage";
-import { SyncPage } from "./features/sync/SyncPage";
+import { ReplicationPage } from "./features/replication/ReplicationPage";
 import { NotFoundPage } from "./features/shared/NotFoundPage";
 
 export function App() {
@@ -31,7 +31,7 @@ export function App() {
           <Route path="procurement" element={<ProcurementPage />} />
           <Route path="workforce" element={<WorkforcePage />} />
           <Route path="reports" element={<ReportsPage />} />
-          <Route path="sync" element={<SyncPage />} />
+          <Route path="replication" element={<ReplicationPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Route>

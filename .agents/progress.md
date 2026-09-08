@@ -12,7 +12,7 @@ Estados usados: `PENDING` (no iniciado), `READY` (desbloqueado pero no iniciado)
 | Fase 3 | Salón: áreas, mesas, cuentas, consumo | COMPLETE | COMPLETE (salón, cuenta y consumo en `/floor` y `/floor/accounts/:id`) | - |
 | Fase 4 | Cobro: descuentos, servicio, divisiones, pagos, caja | COMPLETE | COMPLETE | YES |
 | Fase 5 | Compras, gastos, Kardex, empleados | COMPLETE | COMPLETE | YES |
-| Fase 6 | Sincronización Edge completa (outbox, pull, conflictos) | COMPLETE | PARTIAL (conectividad ONLINE/DEVICE_ONLY real; sin cola de comandos aún — ver `/sync`) | - |
+| Fase 6 | Local-first: servidor por sede + réplica cloud (`replication/*`) | COMPLETE | PARTIAL (`/replication`: estado y consulta de réplica reales; selector multi-sede y panel consolidado bloqueados por backend — ver nota) | - |
 | Fase 7 | Reportes y operación a escala | PENDING | PENDING (placeholder en `/reports`) | - |
 
 ## Notas de la fase actual (Fase 1, frontend)
@@ -101,3 +101,31 @@ de ninguna fase: Fase 6 backend sigue en progreso (Codex) y el frontend de
 Fase 6 sigue sin iniciar por instrucción del gestor. Ver
 `.agents/coordination.md` (2026-09-08) y la nota agregada en
 `.agents/offline-sync-edge.md`.
+
+## Nota frontend — Fase 6, admin cloud de solo lectura (2026-09-08)
+
+Frontend `PARTIAL` contra `packages/contracts/src/replication.ts` y las
+rutas `replication/*` (commits backend `2760cfc`/`a7abb0c`). Pantalla nueva
+`/replication` (reemplaza el placeholder `/sync`, eliminado): estado y
+consulta de réplica reales para la sede activa, tanto en modo Edge
+(pendientes/con error/replicados del outbox local) como en modo Cloud
+(servidor, actividad, última sincronización, réplica agrupada por tipo de
+dato). Verificado en vivo de punta a punta contra un Edge y un Cloud reales
+(Postgres + `apps/api` + `apps/worker`, sin Docker, enrolamiento real,
+operación de dominio replicada de extremo a extremo). `pnpm -w typecheck`
+correcto; `pnpm --filter @don-juan/web test` 157/157.
+
+Dos capacidades pedidas quedan bloqueadas por una decisión de backend, no
+por falta de tiempo: (1) `POST /me/active-branch` está bloqueado con `403`
+en todo despliegue Cloud (`apps/api/src/app.ts:30-32`), así que no hay forma
+real de cambiar de sede activa desde el navegador — confirmado con una
+prueba `app.inject` y en vivo contra un Cloud real; esto bloquea el selector
+multi-sede y el panel consolidado real (ambos construidos hasta donde el
+contrato lo permite, con avisos explícitos citando el bloqueo en vez de
+datos inventados). (2) `GET /health` exige autenticación en cuanto un Edge
+queda enrolado (`apps/api/src/app.ts:25-29` no exceptúa `/health`), lo que
+deja el badge global "SERVIDOR NO DISPONIBLE" permanentemente encendido en
+un Edge real y sano — confirmado en vivo con captura de pantalla. Detalle
+completo, con las rutas exactas y la evidencia de cada verificación, en
+`.agents/handoffs/claude-latest.md` y `.agents/coordination.md`. No se
+avanza a Fase 7.

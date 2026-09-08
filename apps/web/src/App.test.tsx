@@ -99,13 +99,19 @@ describe("App", () => {
     expect(await screen.findByText("SERVIDOR NO DISPONIBLE")).toBeInTheDocument();
   });
 
-  it("explains the live connectivity state on /sync", async () => {
+  it("renders the replication status for /replication", async () => {
     seedAuthenticatedSession();
     mockHealthy();
-    renderApp(["/sync"]);
+    getJsonMock.mockResolvedValue({
+      deploymentMode: "edge",
+      edgeServerId: "11111111-1111-7111-8111-111111111111",
+      branchId: "b1",
+      outbox: { pending: 0, failed: 0, delivered: 2, lastDeliveredAt: null, lastError: null },
+    });
+    renderApp(["/replication"]);
 
-    expect(await screen.findByRole("heading", { name: "Sincronización" })).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText(/respondió correctamente/)).toBeInTheDocument());
+    expect(await screen.findByRole("heading", { name: "Réplica" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/no hay selector de sede/)).toBeInTheDocument());
   });
 
   it("renders the not-found page for unknown routes", async () => {

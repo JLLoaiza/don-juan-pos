@@ -260,3 +260,64 @@ migraciones. Fase 6 backend sigue en implementación por Codex bajo este
 marco. El frontend de Fase 6 no debe comenzar hasta que el gestor actualice
 `.agents/handoffs/manager-to-claude.md` indicando que el backend de Fase 6
 está cerrado y listo.
+
+## 2026-09-08 — Dos bloqueos de contrato encontrados al implementar el frontend de Fase 6 (`/replication`)
+
+**Contexto.** Con el backend de Fase 6 cerrado (`2760cfc`, `a7abb0c`), se
+implementó `/replication` contra `packages/contracts/src/replication.ts` y
+las rutas `replication/*`. Dos de los siete requisitos del gestor (selector
+de sede en la nube y panel consolidado multi-sede) no se pudieron completar
+por el contrato/backend actual, no por falta de tiempo del frontend. Ambos
+se verificaron en vivo, no sólo leyendo el código. Detalle completo en
+`.agents/handoffs/claude-latest.md`.
+
+**Bloqueo 1 — `POST /me/active-branch` bloqueado en Cloud.**
+`apps/api/src/app.ts:30-32` rechaza con `403` cualquier método mutante fuera
+de `/auth/*` y `/replication/cloud/*` cuando `SERVER_ROLE=cloud`. Esa ruta no
+está exenta, así que un usuario Cloud **nunca** puede cambiar de sede activa
+desde el navegador — ni siquiera para elegir su primera sede si tiene dos o
+más autorizadas y ninguna `active_branch_id` persistida (`GET
+/replication/status` exige `activeBranch` no nulo, que sólo se resuelve solo
+con exactamente una sucursal). Verificado con `app.inject` sobre `buildApi`
+real y, en vivo, contra un Cloud real (Postgres + `apps/api`): `403` en
+ambos casos.
+
+**Opciones.**
+1. Exentar `POST /me/active-branch` del candado de sólo-lectura Cloud (es un
+   cambio de contexto de lectura administrativa, no una escritura operacional
+   de una sede), validando igualmente contra `user_branch_access` como ya
+   hace `setActiveBranch`.
+2. Publicar una consulta de réplica que no dependa de la sucursal activa de
+   sesión — por ejemplo `branchId` como parámetro en `GET /replication/status`
+   y `GET /replication/cloud/entities`, validado contra las sedes autorizadas
+   del usuario en vez de derivarlo de `context.activeBranch`.
+3. Publicar un endpoint que devuelva el estado de todas las sedes autorizadas
+   del usuario en una sola llamada, para el panel consolidado.
+
+**Recomendación frontend.** 1 y 2 combinadas resuelven el selector de sede;
+3 es necesaria además para que el panel consolidado muestre datos reales de
+más de una sede sin depender de cambiar de contexto repetidamente. Sin
+alguna de estas, el selector y el panel consolidado quedan `PARTIAL`
+indefinidamente para cualquier administrador con más de una sede autorizada.
+
+**Bloqueo 2 — `GET /health` exige autenticación en un Edge enrolado.**
+`apps/api/src/app.ts:25-29` aplica el candado "este servidor sólo opera su
+sucursal enrolada" a toda ruta que no sea `/auth/*` o `/replication/cloud/*`,
+sin exceptuar `/health`, en cuanto `localBranchId` deja de ser `null` (Edge
+enrolado). `apps/web` llama `GET /health` sin credenciales cada 15s
+(`useConnectivity`) para el badge global de conectividad. Verificado en vivo
+contra un Edge real y sano, ya enrolado: `/health` responde `401` y el
+`AppShell` queda permanentemente en "SERVIDOR NO DISPONIBLE", aunque la
+sede, la réplica y todo lo demás funcionen. No es un defecto de
+`/replication/*`; afecta a toda la aplicación y sólo se manifiesta con un
+Edge realmente enrolado (no existía una instalación así en el repositorio
+hasta esta verificación).
+
+**Recomendación.** Excluir `/health` del hook de `apps/api/src/app.ts:25-29`,
+igual que ya se excluyen `/auth/*` y `/replication/cloud/*`.
+
+**Estado.** Ninguno de los dos bloqueos se corrigió desde frontend (son
+`apps/api`, fuera de mi alcance en esta fase). El resto de `/replication`
+(estado y consulta de réplica de la sede activa, tanto Edge como Cloud) está
+`COMPLETE` y verificado en vivo. Pendiente de que Codex/el gestor decidan
+sobre las opciones anteriores antes de cerrar Fase 6 frontend por completo.

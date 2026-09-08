@@ -15,7 +15,7 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "/procurement", label: "Compras" },
   { to: "/workforce", label: "Personal" },
   { to: "/reports", label: "Reportes" },
-  { to: "/sync", label: "Sincronización" },
+  { to: "/replication", label: "Réplica" },
 ];
 
 export type AppShellOutletContext = UseConnectivityResult;
