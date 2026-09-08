@@ -177,3 +177,10 @@ El instalador guarda `EDGE_SERVER_ID`, `EDGE_BRANCH_ID` y `EDGE_SERVER_TOKEN` co
 ## Pendiente para integración
 
 Claude puede construir UI de estado/salud de réplica sobre los contratos cuando la integración PostgreSQL separada esté aprobada. No se inició Fase 7, no hay edición operativa Cloud→sede, catálogo global ni facturación electrónica.
+## Bloqueo de liberación frontend — Fase 6
+
+**No usar aún `/sync/*` como contrato local-first.** Las rutas históricas de dispositivo/navegador (`/sync/push`, `/sync/changes`, conflictos e IndexedDB/PULL asociado) pertenecen al diseño anterior y **no sustituyen** el flujo aprobado `cliente LAN → API Edge → PostgreSQL local → outbox → Cloud`. No están liberadas para que frontend implemente cola local-first ni operación DEVICE_ONLY.
+
+Los contratos que sí constituyen el carril local-first son `packages/contracts/src/replication.ts` y las rutas `replication/*`; aun así quedan **bloqueados para consumo frontend** hasta validar la instalación Edge+Cloud real con dos PostgreSQL y migración `0027`.
+
+Comprobado de nuevo el 2026-09-08: Docker Desktop continúa sin daemon (`dockerDesktopLinuxEngine` no disponible), por lo que no se ejecutaron enrolamiento, aislamiento, operación WAN-off/outbox, ACK/reintento, snapshot de identidad ni última sincronización sobre instalaciones separadas. Fase 6 no se marca integrada, no se libera a Claude y no avanza a Fase 7.
