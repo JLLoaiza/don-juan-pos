@@ -188,3 +188,45 @@ No se adelanta `CONFIRM_PURCHASE`: compras son Fase 5. En Fase 2 el costo se fij
 **Nota operativa.** `infra/db/migrations/0019_procurement_integrity.sql` (Fase 5, pausada, no confirmada) sigue en el directorio de migraciones sin commitear. No corrí el migrador para aplicar `0020` porque también recogería `0019` y lo dejaría con checksum registrado antes de que Codex lo termine, bloqueando ediciones futuras de ese archivo. Apliqué el contenido de `0020` directamente vía `psql` (aditivo, `ON CONFLICT DO NOTHING`) sin tocar `schema_migrations`; se re-aplicará sin problema cuando el migrador corra normalmente más adelante.
 
 **Estado.** Frontend de Fase 4 `COMPLETE`. División de cuenta (`sales.split`) sigue sin ruta; `/billing` como pantalla de nivel superior sigue siendo placeholder (no hay endpoint de "cuentas pendientes de cobro" para darle contenido). No se avanza a Fase 5.
+## 2026-09-07 — Fase 6: frontera Edge/Cloud y primer slice de sincronización
+
+**Contexto.** La especificación exige un escritor operativo único por sucursal (Edge PostgreSQL) y una Cloud consolidada. El Compose actual contiene una sola instancia PostgreSQL/API, válida como Edge de desarrollo, pero no una Cloud separada ni credenciales Edge→Cloud. Tratar esa misma instancia como dos escritores violaría la prevención de split-brain.
+
+**Decisión de implementación inicial.** Se implementará primero la frontera Edge: registro y desactivación de dispositivos por sucursal, operaciones y resultados idempotentes, feed de cambios cursorizado, y outbox transaccional ya producido por los comandos de dominio. El worker solo intentará entrega Cloud si recibe una URL/credencial explícita de Cloud; la ausencia de esa configuración deja los eventos pendientes y no reenvía escrituras de clientes a otro destino.
+
+**Pendiente para revisión de arquitectura.** Antes de habilitar una topología Cloud real se debe fijar: URL/identidad autenticada del Edge, formato y versión del endpoint Cloud receptor, y despliegue de una base consolidada separada. No se introducirá replicación PostgreSQL ni un failover automático de clientes hacia Cloud.
+
+**Impacto.** Este slice permite que Claude implemente cola/PULL y visibilidad de estado sin inventar Cloud. El carril completo Edge→Cloud queda PARTIAL hasta la revisión indicada.
+## 2026-09-07 — Bug bloqueante en Fase 5 backend: columnas DATE devuelven 400 "Invalid request" pese a persistir correctamente
+
+**Contexto.** Al continuar el carril frontend de Fase 5 (Compras/Gastos/Kardex ya con contratos y rutas reales publicadas por Codex), verifiqué en vivo contra API + PostgreSQL reales. Proveedores, compras (con Kardex e inventario), anulación de compra, gastos y creación de empleados funcionan correctamente end-to-end. Al pasar a tarifas por hora, turnos, bonos y pagos de empleados, encontré un bug sistemático que **no es de mi carril** (vive enteramente en `apps/api/src/workforce.ts`), documentado aquí en vez de corregido, a la espera de que el usuario lo resuelva directamente.
+
+**Síntoma.** `POST /employee-wage-rates` y `POST /employee-shifts/clock-in` responden `400 {"code":"VALIDATION_ERROR","message":"Invalid request"}`, pero la fila **sí queda insertada correctamente en PostgreSQL** (confirmado con `SELECT` directo tras cada intento). El mismo patrón de código está presente en los cuatro mappers de este módulo, así que muy probablemente afecta también a `POST /employee-bonuses` y `POST /employee-shifts/:id/payments` aunque no llegué a ejercitarlos en vivo (no hay forma de alcanzarlos sin tarifa/turno funcionando primero).
+
+**Causa raíz.** `node-postgres` (`pg`) deserializa columnas `DATE` (OID 1082) como objeto `Date` de JS por defecto — no hay ningún `pg.types.setTypeParser` registrado en `packages/database` que lo evite. Los cuatro mappers de `apps/api/src/workforce.ts` asumen que la columna ya es texto:
+
+- `wageRate()` (línea 60): `effectiveFrom:String(row.effective_from).slice(0,10)`
+- `shift()` (línea 61): `workDate:String(row.work_date).slice(0,10)`
+- `bonus()` (línea 62): `bonusDate:String(row.bonus_date).slice(0,10)`
+- `payment()` (línea 63): `paymentDate:String(row.payment_date).slice(0,10)`
+
+Cuando `row.X` es un `Date` de JS, `String(row.X)` produce algo como `"Mon Sep 07 2026 00:00:00 GMT+0000 (Coordinated Universal Time)"`, y `.slice(0,10)` da `"Mon Sep 07"` — no calza con `DateSchema` (`/^\d{4}-\d{2}-\d{2}$/` en `packages/contracts/src/workforce.ts`). La ruta hace `WageRateSchema.parse(...)`/`EmployeeShiftSchema.parse(...)` etc. sobre el resultado antes de responder (`apps/api/src/app.ts`), así que el `ZodError` resultante cae en el manejador genérico y se traduce a `400 "Invalid request"` — **después** de que el comando ya se ejecutó y confirmó en la misma transacción. Esto es más grave que un error de validación normal: el cajero ve un fallo y puede reintentar (mismo o distinto `Idempotency-Key`), arriesgando turnos abiertos duplicados si reintenta sin la misma clave.
+
+Este defecto es nuevo en Fase 5 porque es la primera vez que el proyecto lee una columna `DATE` (no `TIMESTAMP`) de vuelta al cliente; `purchases.purchase_date` y `expenses.expense_date` son `TIMESTAMP` y por eso no lo sufren — confirmé ambos funcionando correctamente en vivo.
+
+**Sugerencia de corrección (una de dos, a elección de Codex).**
+1. Registrar una vez, globalmente, `pg.types.setTypeParser(1082, (value) => value)` en `packages/database` para que toda columna `DATE` del proyecto vuelva como texto `YYYY-MM-DD` sin tocar cada mapper.
+2. O corregir cada mapper para formatear explícitamente: reemplazar `String(row.X).slice(0,10)` por algo que tolere tanto `Date` como `string` (p. ej. `row.X instanceof Date ? row.X.toISOString().slice(0,10) : String(row.X).slice(0,10)`).
+
+**Estado.** No se tocó `apps/api` ni `packages/contracts`. El usuario indicó que lo resuelve directamente; frontend queda en pausa sobre Turnos/Bonos/Pagos/tarifas hasta que se confirme el fix. El resto de Fase 5 frontend (proveedores, compras, gastos, Kardex, alta/edición de empleados) está implementado, probado y verificado en vivo — ver nota de progreso.
+
+## 2026-09-07 — Resolución confirmada: fechas de personal, más dos correcciones propias del frontend
+
+El bug de columnas `DATE` reportado más arriba fue corregido en backend (`dateOnly()` en `apps/api/src/workforce.ts`, migración `0025_workforce_date_response_repair.sql` saneando el ledger de idempotencia). Verifiqué en vivo tras el fix: `POST /employee-wage-rates`, `POST /employee-shifts/clock-in` y `POST /employee-shifts/:id/clock-out` responden `200` correctamente, y las tarifas/turnos creados antes del fix (cuyo dato ya estaba bien en PostgreSQL) ahora se leen y muestran con el formato de fecha correcto.
+
+Durante esa misma verificación encontré y corregí dos bugs propios del frontend (no de contrato ni de backend), documentados con detalle en `.agents/progress.md`:
+
+1. `ProcurementPage.tsx` ofrecía ítems de inventario inactivos en el selector de compra (el backend los rechaza con 422, pero sin filtro previo el usuario no tenía forma de saberlo).
+2. `WorkforcePage.tsx`, botón "Registrar salida", no manejaba el rechazo de `clockOut` — quedaba como promesa no capturada sin ningún aviso al cajero. Corregido con manejo de error explícito y prueba nueva.
+
+`pnpm -w typecheck` y `pnpm --filter @don-juan/web test` (148/148) correctos tras ambas correcciones. Fase 5 frontend queda `COMPLETE`, verificado en vivo de punta a punta (proveedores, compras con Kardex, anulaciones, gastos, empleados, tarifas, turnos, bonos y pagos con anulación). No se avanza a Fase 6.

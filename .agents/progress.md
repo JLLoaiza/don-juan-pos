@@ -11,8 +11,8 @@ Estados usados: `PENDING` (no iniciado), `READY` (desbloqueado pero no iniciado)
 | Fase 2 | Catálogo e inventario base | COMPLETE | COMPLETE (inventario, acompañamientos, productos y precio en `/catalog`) | - |
 | Fase 3 | Salón: áreas, mesas, cuentas, consumo | COMPLETE | COMPLETE (salón, cuenta y consumo en `/floor` y `/floor/accounts/:id`) | - |
 | Fase 4 | Cobro: descuentos, servicio, divisiones, pagos, caja | COMPLETE | COMPLETE | YES |
-| Fase 5 | Compras, gastos, Kardex, empleados | READY | READY | - |
-| Fase 6 | Sincronización Edge completa (outbox, pull, conflictos) | PENDING | PARTIAL (conectividad ONLINE/DEVICE_ONLY real; sin cola de comandos aún — ver `/sync`) | - |
+| Fase 5 | Compras, gastos, Kardex, empleados | COMPLETE | COMPLETE | YES |
+| Fase 6 | Sincronización Edge completa (outbox, pull, conflictos) | PARTIAL (dispositivos, estado y PULL cursorizado) | PARTIAL (conectividad ONLINE/DEVICE_ONLY real; sin cola de comandos aún — ver `/sync`) | - |
 | Fase 7 | Reportes y operación a escala | PENDING | PENDING (placeholder en `/reports`) | - |
 
 ## Notas de la fase actual (Fase 1, frontend)
@@ -60,3 +60,25 @@ Frontend `COMPLETE`: Codex publicó `GET /payment-methods`, `GET /cash-registers
 ## Integración — Fase 4 completa (2026-09-07)
 
 Backend y frontend integrados satisfactoriamente. `GET /payment-methods`, cajas/sesiones, pagos, ajustes y cierres respetan la sucursal derivada de sesión, permisos backend, versiones e idempotencia. `pnpm --filter @don-juan/api test:integration` pasó 10/10 contra PostgreSQL local; `pnpm -w typecheck` pasó. La suite global de migraciones sigue exponiendo un defecto histórico de `0009_identity_access.sql` contra el DDL base (`user_roles.id`), ajeno a Fase 4 y no se reescribió para preservar checksums. Fase 5 queda READY y no se retoma.
+## Nota frontend — Fase 5 completa (2026-09-07)
+
+Frontend **COMPLETE** contra los contratos de compras, gastos, Kardex, proveedores, empleados, turnos, bonos y pagos/anulaciones de empleado. Las pantallas `/procurement` y `/workforce` consumen exclusivamente rutas reales, con claves de idempotencia para toda mutación, selectores legibles, invalidación al cambiar sede y confirmación explícita de anulaciones. No exponen ni envían `companyId`/`branchId`, y los cálculos de inventario, efectivo y nómina se mantienen en backend. `pnpm --filter @don-juan/web test` pasó 147/147 y `pnpm -w typecheck` pasó. La integración posterior quedó satisfactoria; no se avanzó a Fase 6. Ver `.agents/handoffs/codex-frontend-latest.md`.
+## Integración — Fase 5 completa (2026-09-07)
+
+Backend y frontend integrados satisfactoriamente para proveedores, compras, gastos, Kardex, empleados, turnos, bonos y pagos/anulaciones de empleado. Las rutas reales derivan la sucursal de la sesión, mantienen permisos como autoridad backend y no aceptan `companyId` ni `branchId` de cliente. Las mutaciones usan idempotencia, las anulaciones son compensatorias y confirmadas explícitamente en UI, y el navegador no calcula costo, efectivo ni nómina de forma autoritativa. Validado con `pnpm --filter @don-juan/api test:integration` contra PostgreSQL local: 13/13; API: 38 pasaron (26 omitidas sin variable de entorno); web: 147/147; `pnpm -w typecheck`: correcto. Fase 6 queda PENDING y no se inició.
+## Nota backend — Fase 6, primer slice Edge (2026-09-07)
+
+Backend `PARTIAL`: se publicaron registro/desactivación de dispositivos, `GET /sync/status` y PULL branch-scoped con cursor monotónico; el feed nace transaccionalmente desde el outbox existente. La migración `0024_sync_protocol_core.sql` fue aplicada a PostgreSQL local y las integraciones pasaron 15/15. PUSH, IndexedDB, conflictos y el transporte a una Cloud separada siguen pendientes; no se implementó Fase 7. Ver `.agents/handoffs/codex-latest.md` y `.agents/coordination.md`.
+## Hotfix backend — Fase 5: normalización DATE de personal (2026-09-07)
+
+Se corrigió un 400 post-commit en las respuestas de tarifas, turnos, bonos y pagos de empleado: PostgreSQL podía entregar `DATE` como `Date` y el mapper devolvía una cadena no ISO. El backend ahora emite siempre `YYYY-MM-DD` sin conversión de zona horaria, y `0025_workforce_date_response_repair.sql` sanea los resultados históricos del ledger idempotente para que un retry no reciba el mismo 400 ni duplique la operación. La migración se aplicó a PostgreSQL local; integración 16/16, API 42 correctas y typecheck global correcto. Fase 5 backend sigue COMPLETE; Fase 6 no se retomó en este ciclo.
+## Nota frontend — Fase 5, verificación en vivo tras el hotfix de fechas y dos correcciones propias (2026-09-07)
+
+Con el hotfix backend de fechas ya aplicado, verifiqué en vivo end-to-end el flujo completo de `/procurement` y `/workforce` contra API + PostgreSQL reales: proveedor → compra confirmada (con línea de inventario, Kardex actualizado, costo promedio recalculado) → anulación de compra → gasto confirmado → empleado → tarifa por hora → marcar entrada → marcar salida (bloqueada correctamente sin cobertura de tarifa, luego exitosa con cobertura completa) → bono → pago de turno incluyendo el bono (total calculado por el servidor) → anulación de pago. Todo consumido contra rutas reales, sin mocks.
+
+Encontré y corregí dos bugs propios del frontend durante esa verificación:
+
+1. **`ProcurementPage.tsx` — el selector de ítems para una compra no filtraba por `active`.** A diferencia de `ProductComponentsEditor.tsx`/`InventoryComponentsEditor.tsx` (que sí filtran), el formulario de compra ofrecía ítems de inventario desactivados; el backend los rechaza correctamente (`422`), pero el usuario podía seleccionarlos sin ninguna señal previa. Corregido filtrando a `inventoryItems.filter(x => x.active)` antes de pasarlos al formulario.
+2. **`WorkforcePage.tsx` — el botón "Registrar salida" no manejaba ningún error.** `onClick={() => void api.clockOut(x.id, {}).then(afterMutation)}` no tenía `.catch`; un rechazo (por ejemplo, turno sin cobertura completa de tarifa) quedaba como una promesa no manejada, sin ningún aviso visible para el cajero — justo el tipo de caso que la regla "maneja errores de validación de manera clara" busca cubrir. Corregido con un manejador que captura el error y lo muestra en un `Banner`, igual que el resto de mutaciones de esta página. Se agregó una prueba en `WorkforcePage.test.tsx` que cubre este caso.
+
+`pnpm -w typecheck` correcto; `pnpm --filter @don-juan/web test` 148/148 (147 previas + la nueva prueba de este bug). Fase 5 frontend queda `COMPLETE` y verificado en vivo con el backend ya corregido. No se avanza a Fase 6.
