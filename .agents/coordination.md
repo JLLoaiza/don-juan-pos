@@ -230,3 +230,33 @@ Durante esa misma verificación encontré y corregí dos bugs propios del fronte
 2. `WorkforcePage.tsx`, botón "Registrar salida", no manejaba el rechazo de `clockOut` — quedaba como promesa no capturada sin ningún aviso al cajero. Corregido con manejo de error explícito y prueba nueva.
 
 `pnpm -w typecheck` y `pnpm --filter @don-juan/web test` (148/148) correctos tras ambas correcciones. Fase 5 frontend queda `COMPLETE`, verificado en vivo de punta a punta (proveedores, compras con Kardex, anulaciones, gastos, empleados, tarifas, turnos, bonos y pagos con anulación). No se avanza a Fase 6.
+
+## 2026-09-08 — Arquitectura aprobada y formalizada: operación local por sede y réplica cloud
+
+**Decisión de producto, ya en vigor.** Se formalizó en
+`.agents/architecture/local-first-edge-replication.md` la arquitectura de
+referencia para todo el proyecto: cada sede opera con su propio servidor
+local (frontend POS, API local, PostgreSQL local, impresión local) como
+autoridad operativa de su sede; ese servidor replica sus cambios hacia una
+nube que administra sedes, servidores, usuarios, roles y permisos, y que
+conserva réplicas para consulta y dashboards administrativos. Productos,
+recetas, acompañantes, precios, inventario y operación son propios de cada
+sede — no existen catálogos globales. No hay operación remota en tiempo real
+contra una sede, edición remota de catálogo ni facturación electrónica en
+este alcance.
+
+**Coherencia con decisiones previas.** Esta formalización no contradice la
+nota del 2026-09-07 "Fase 6: frontera Edge/Cloud y primer slice de
+sincronización" de esta misma bitácora: el escritor operativo único por
+sucursal (Edge PostgreSQL) ya asumido ahí es exactamente el servidor local de
+sede que describe la arquitectura formal. Sí reemplaza cualquier lectura de
+`.agents/offline-sync-edge.md` que asumiera catálogo administrado o editado
+desde la nube (sus secciones 84-87); ver la nota agregada en ese documento y
+en `.agents/architecture/local-first-edge-replication.md` §"Documentos
+relacionados".
+
+**Estado.** Documental únicamente; no se tocó código, contratos ni
+migraciones. Fase 6 backend sigue en implementación por Codex bajo este
+marco. El frontend de Fase 6 no debe comenzar hasta que el gestor actualice
+`.agents/handoffs/manager-to-claude.md` indicando que el backend de Fase 6
+está cerrado y listo.

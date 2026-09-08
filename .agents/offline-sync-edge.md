@@ -1,5 +1,18 @@
 # Offline, Edge Server and Synchronization Module
 
+> **Nota de vigencia (2026-09-08).** La topología, la autoridad de datos y el
+> alcance de esta arquitectura quedaron formalizados en
+> `.agents/architecture/local-first-edge-replication.md`, que es ahora el
+> documento autoritativo para esos temas. Este documento sigue vigente como
+> referencia técnica del protocolo de sincronización operación por operación
+> (idempotencia, `operation_id`, outbox, cursores, PUSH/PULL, tipos de
+> conflicto, niveles de capacidad offline). Las secciones 84-87 (cambios de
+> catálogo iniciados desde la nube) quedan **reemplazadas**: no existe
+> catálogo, receta, acompañante ni precio global administrado por la nube;
+> cada sede es la única autoridad de su catálogo y la nube no lo edita
+> remotamente. Ver ese documento para el alcance completo y sus límites
+> explícitos.
+
 ## Purpose
 
 This document defines the architecture, domain rules, synchronization behavior and conflict policies required for reliable restaurant operation when Internet connectivity is unavailable or unstable.
@@ -1808,9 +1821,16 @@ Cloud processes it once.
 
 # 84. Cloud-to-Edge Changes
 
+> **Reemplazado en parte (2026-09-08).** "Product configuration" ya no
+> aplica: el catálogo (productos, recetas, acompañantes, precios) es
+> autoridad exclusiva de cada sede y no se administra ni edita desde la nube.
+> Usuarios, roles y configuración de sucursal sí siguen administrándose desde
+> la nube y replicándose hacia el servidor local, como describe
+> `.agents/architecture/local-first-edge-replication.md`.
+
 Cloud-originated changes may include:
 
-- Product configuration
+- ~~Product configuration~~ (reemplazado — ver nota arriba)
 - User changes
 - Role changes
 - Branch settings
@@ -1822,12 +1842,16 @@ These must eventually propagate to Edge.
 
 # 85. Cloud Write Restrictions
 
+> **Reemplazado en parte (2026-09-08).** "Catalog configuration" ya no es
+> dato administrado por la nube: cada sede es la única autoridad de su
+> catálogo. Ver `.agents/architecture/local-first-edge-replication.md`.
+
 Because Edge is branch operational authority, remote Cloud administration should avoid directly modifying highly active operational aggregates.
 
 Safe cloud-managed data:
 
 ```text
-Catalog configuration
+~~Catalog configuration~~ (reemplazado — ver nota arriba)
 Users
 Roles
 Settings
@@ -1850,6 +1874,11 @@ unless explicitly designed.
 
 # 86. Catalog Cloud Updates
 
+> **Reemplazado (2026-09-08).** Esta sección completa queda reemplazada por
+> `.agents/architecture/local-first-edge-replication.md`: no hay
+> actualizaciones de catálogo iniciadas desde la nube porque el catálogo es
+> propio de cada sede y no existe un catálogo global.
+
 Cloud catalog changes may sync to Edge.
 
 Example:
@@ -1869,6 +1898,11 @@ Devices pull/update
 ---
 
 # 87. Edge Conflict With Cloud Catalog Edit
+
+> **Reemplazado (2026-09-08).** Esta sección completa queda reemplazada por
+> `.agents/architecture/local-first-edge-replication.md`: la nube no edita
+> catálogo, por lo que este conflicto Edge/Cloud sobre catálogo no puede
+> ocurrir en el alcance aprobado.
 
 If both Edge and Cloud modify the same catalog entity concurrently:
 

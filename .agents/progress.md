@@ -89,3 +89,15 @@ La integración entre backend `de7f54b` y frontend `8ece060` quedó satisfactori
 ## Nota backend — Fase 6 completa (2026-09-07)
 
 El carril backend Edge Sync está **COMPLETE** y preparado para integración: dispositivos branch-scoped, PULL cursorizado, PUSH por lotes con resultados individuales, deduplicación por `operationId`, orden por entidad/dependencias, reautorización por comando y conflictos explícitos/resolubles por descarte auditado. El outbox permanece transaccional y el worker sólo entrega hacia una Cloud si `CLOUD_SYNC_URL` y `CLOUD_SYNC_TOKEN` se configuran explícitamente; de otro modo conserva eventos pendientes sin alterar el escritor Edge. La UI/IndexedDB es responsabilidad frontend y sigue `PARTIAL`; Fase 7 no se inició. Instalación limpia desde el árbol exacto de Fase 6: migraciones `0000` + `0001`–`0026` y segunda pasada vacía; integraciones PostgreSQL 17/17.
+
+## Nota documental — Arquitectura local-first formalizada (2026-09-08)
+
+Se formalizó `.agents/architecture/local-first-edge-replication.md` como
+arquitectura autoritativa de topología, autoridad de datos y alcance
+(servidor local por sede como autoridad operativa, réplica hacia la nube, sin
+catálogos globales, sin operación remota en tiempo real ni facturación
+electrónica en este alcance). Es documental únicamente y no cambia el estado
+de ninguna fase: Fase 6 backend sigue en progreso (Codex) y el frontend de
+Fase 6 sigue sin iniciar por instrucción del gestor. Ver
+`.agents/coordination.md` (2026-09-08) y la nota agregada en
+`.agents/offline-sync-edge.md`.

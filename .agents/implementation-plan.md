@@ -8,6 +8,12 @@ Los documentos de `.agents/` son la fuente funcional y técnica autoritativa. El
 
 No existe un archivo `inventory.md` (ni otro archivo con `inventory` o `catalog` en el nombre) dentro de `.agents/`. La especificación autoritativa de inventario, catálogo y costos es `purchases_expenses.md`; las reglas de compras, gastos y Kardex están en `purchases-expenses-kardex.md`.
 
+Antes de esta lista, léase `.agents/architecture/local-first-edge-replication.md`,
+que formaliza la arquitectura aprobada de topología, autoridad de datos y
+alcance (servidor local por sede, réplica hacia la nube, sin catálogos
+globales) y sustituye cualquier supuesto de sincronización basada solo en
+navegadores/dispositivos.
+
 Orden recomendado para leer las especificaciones:
 
 1. `organization_access.md`
@@ -190,6 +196,13 @@ Almacenes mínimos:
 La cola es append-only para un comando de negocio. Tras respuesta idempotente exitosa se marca aplicada; nunca se elimina antes de que la UI haya consolidado su resultado. En modo sin conexión, la PWA mostrará explícitamente que está trabajando con datos potencialmente desactualizados.
 
 ## 8. Estrategia Edge / Cloud
+
+> **Nota (2026-09-08):** La topología, la autoridad de datos y los límites
+> explícitos de esta estrategia quedaron formalizados en
+> `.agents/architecture/local-first-edge-replication.md`, documento
+> autoritativo (sin catálogos globales, sin operación remota en tiempo real
+> ni facturación electrónica en este alcance). Esta sección conserva su
+> validez como resumen técnico Edge/Cloud del plan de implementación.
 
 ```text
 PWA y dispositivos
