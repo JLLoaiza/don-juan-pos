@@ -121,4 +121,49 @@ describe("AppShell", () => {
 
     expect(screen.queryByText(/compañía/i)).not.toBeInTheDocument();
   });
+
+  it("the mobile nav toggle opens the drawer (aria-expanded, --open class) and closes it again", async () => {
+    getHealth.mockResolvedValue({ status: "ok", database: "ok", checkedAt: "2026-09-06T00:00:00.000Z" });
+    renderShell(makeAuth());
+
+    const toggle = screen.getByRole("button", { name: "Abrir navegación" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByLabelText("Navegación principal")).not.toHaveClass("dj-shell__nav--open");
+
+    fireEvent.click(toggle);
+
+    expect(screen.getByRole("button", { name: "Cerrar navegación" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByLabelText("Navegación principal")).toHaveClass("dj-shell__nav--open");
+
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar navegación" }));
+
+    expect(screen.getByRole("button", { name: "Abrir navegación" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByLabelText("Navegación principal")).not.toHaveClass("dj-shell__nav--open");
+  });
+
+  it("clicking a nav link closes an open drawer", async () => {
+    getHealth.mockResolvedValue({ status: "ok", database: "ok", checkedAt: "2026-09-06T00:00:00.000Z" });
+    renderShell(makeAuth());
+
+    fireEvent.click(screen.getByRole("button", { name: "Abrir navegación" }));
+    expect(screen.getByLabelText("Navegación principal")).toHaveClass("dj-shell__nav--open");
+
+    fireEvent.click(screen.getByRole("link", { name: "Salón" }));
+
+    expect(screen.getByLabelText("Navegación principal")).not.toHaveClass("dj-shell__nav--open");
+  });
+
+  it("clicking the backdrop closes an open drawer", async () => {
+    getHealth.mockResolvedValue({ status: "ok", database: "ok", checkedAt: "2026-09-06T00:00:00.000Z" });
+    const { container } = renderShell(makeAuth());
+
+    fireEvent.click(screen.getByRole("button", { name: "Abrir navegación" }));
+    const backdrop = container.querySelector(".dj-shell__backdrop");
+    expect(backdrop).not.toBeNull();
+
+    fireEvent.click(backdrop as Element);
+
+    expect(screen.getByLabelText("Navegación principal")).not.toHaveClass("dj-shell__nav--open");
+    expect(container.querySelector(".dj-shell__backdrop")).toBeNull();
+  });
 });

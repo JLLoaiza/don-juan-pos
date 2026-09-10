@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent } from "react";
+import { useEffect, useState, type ChangeEvent } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { Banner, ConnectivityBadge, EmptyState } from "@don-juan/ui";
 import { apiClient } from "../lib/api/client";
@@ -63,27 +63,57 @@ function BranchSwitcher() {
 export function AppShell() {
   const connectivity = useConnectivity({ checkHealth });
   const auth = useAuth();
+  const [navOpen, setNavOpen] = useState(false);
 
   const deviceOnlyDescription =
     auth.isStale && auth.staleSince
       ? `El dispositivo no puede confirmar operaciones en línea. Mostrando la última sesión guardada (${new Date(auth.staleSince).toLocaleString()}); la operación offline completa aún no está implementada en este slice.`
       : "El dispositivo no puede confirmar operaciones en línea. La operación offline aún no está implementada en este slice.";
 
+  // Mobile only (the toggle button that flips this is hidden above the
+  // breakpoint via CSS): lock background scroll and allow Escape to close
+  // the drawer while it's open.
+  useEffect(() => {
+    if (!navOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setNavOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [navOpen]);
+
   return (
     <div className="dj-shell">
       <header className="dj-shell__header">
+        <button
+          type="button"
+          className="dj-shell__menu-toggle"
+          aria-label={navOpen ? "Cerrar navegación" : "Abrir navegación"}
+          aria-expanded={navOpen}
+          aria-controls="dj-shell-nav"
+          onClick={() => setNavOpen((prev) => !prev)}
+        >
+          {navOpen ? "✕" : "☰"}
+        </button>
         <span className="dj-shell__brand">Don Juan</span>
-        <nav className="dj-shell__nav" aria-label="Navegación principal">
+        <nav id="dj-shell-nav" className={`dj-shell__nav${navOpen ? " dj-shell__nav--open" : ""}`} aria-label="Navegación principal">
           {NAV_ITEMS.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
+              onClick={() => setNavOpen(false)}
               className={({ isActive }) => `dj-shell__link${isActive ? " dj-shell__link--active" : ""}`}
             >
               {item.label}
             </NavLink>
           ))}
         </nav>
+        {navOpen ? <div className="dj-shell__backdrop" onClick={() => setNavOpen(false)} /> : null}
         <BranchSwitcher />
         <div className="dj-shell__user">
           <span>{auth.context?.user.displayName}</span>
