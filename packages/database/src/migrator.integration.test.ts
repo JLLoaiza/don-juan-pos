@@ -28,6 +28,22 @@ describeIntegration("PostgreSQL migrations", () => {
       "0010_identity_initial_data.sql",
       "0011_development_identity_seed.sql",
       "0012_catalog_integrity_and_commands.sql",
+      "0013_floor_consumption_integrity.sql",
+      "0014_floor_trigger_record_safety.sql",
+      "0015_floor_trigger_complete_record_safety.sql",
+      "0016_payments_and_cash_integrity.sql",
+      "0017_billing_discount_integrity.sql",
+      "0018_cash_close_integrity.sql",
+      "0019_procurement_integrity.sql",
+      "0020_development_cash_seed.sql",
+      "0021_workforce_integrity.sql",
+      "0022_procurement_void_integrity.sql",
+      "0023_workforce_payment_void_integrity.sql",
+      "0024_sync_protocol_core.sql",
+      "0025_workforce_date_response_repair.sql",
+      "0026_sync_push_conflicts.sql",
+      "0027_local_first_edge_replication.sql",
+      "0028_reports_permissions.sql",
     ]);
 
     const integrity = await pool.query<{ index_exists: string | null; version_exists: string | null }>(`
