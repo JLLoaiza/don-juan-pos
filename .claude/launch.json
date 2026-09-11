@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "web",
-      "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@don-juan/web", "dev"],
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["--yes", "pnpm@11.19.0", "--filter", "@don-juan/web", "dev"],
       "port": 5173
     }
   ]

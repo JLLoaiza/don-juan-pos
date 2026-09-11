@@ -33,6 +33,8 @@ describeIntegration("floor consumption transaction", () => {
   it("opens one table account and commits snapshots, Kardex, kitchen, print and outbox atomically", async () => {
     const opened = await floor.openAccount(actor, randomUUID(), { tableId, notes: "Birthday", customerId: null });
     expect(opened.status).toBe("OPEN");
+    const tableAfterOpening = await pool.query("SELECT status FROM restaurant_tables WHERE id=$1", [tableId]);
+    expect(tableAfterOpening.rows[0]?.status).toBe("AVAILABLE");
     const operationId = randomUUID();
     const result = await floor.confirmConsumption(actor, operationId, opened.id, { expectedVersion: opened.version, items: [{ productId, quantity: "2", selectedAdditionals: [], notes: "Well done" }] }, true);
     const replay = await floor.confirmConsumption(actor, operationId, opened.id, { expectedVersion: opened.version, items: [{ productId, quantity: "2", selectedAdditionals: [], notes: "Well done" }] }, true);

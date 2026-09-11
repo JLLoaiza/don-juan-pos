@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Banner, Button, ErrorState, LoadingState } from "@don-juan/ui";
+import { Button, ErrorState, LoadingState } from "@don-juan/ui";
 import type { RestaurantTable } from "@don-juan/contracts";
 import { ApiRequestError } from "../../lib/api/httpClient";
 import { useAuth } from "../auth/useAuth";
@@ -27,8 +27,6 @@ export function FloorPage() {
   const auth = useAuth();
   const navigate = useNavigate();
   const { status, snapshot, error, api, reload } = useFloor();
-  const [openingTableId, setOpeningTableId] = useState<string | null>(null);
-  const [openError, setOpenError] = useState<string | null>(null);
   const [creatingArea, setCreatingArea] = useState(false);
   const [creatingTable, setCreatingTable] = useState(false);
   const permissions = auth.context?.permissions ?? [];
@@ -60,19 +58,7 @@ export function FloorPage() {
     }
     if (!canOpen) return;
     if (table.status !== "AVAILABLE" && table.status !== "RESERVED") return;
-    setOpenError(null);
-    setOpeningTableId(table.id);
-    api
-      .openAccount({ tableId: table.id, notes: null })
-      .then((account) => {
-        navigate(`/floor/accounts/${account.id}`);
-      })
-      .catch((cause: unknown) => {
-        const message = cause instanceof ApiRequestError ? cause.message : "No se pudo abrir la cuenta.";
-        setOpenError(message);
-        setOpeningTableId(null);
-        reload();
-      });
+    navigate(`/floor/tables/${table.id}/order`);
   };
 
   const handleCreateArea = (input: Parameters<typeof api.createDiningArea>[0]) =>
@@ -95,7 +81,6 @@ export function FloorPage() {
   return (
     <section className="dj-floor" aria-labelledby="floor-title">
       <h1 id="floor-title">Salón</h1>
-      {openError ? <Banner tone="danger" title={openError} /> : null}
 
       {canCreateArea || canCreateTable ? (
         <div className="dj-floor__toolbar">
@@ -135,12 +120,11 @@ export function FloorPage() {
                     type="button"
                     className={`dj-table dj-table--${table.status.toLowerCase()}`}
                     onClick={() => handleTableClick(table)}
-                    disabled={openingTableId === table.id || (!table.openAccountId && !canOpen && table.status !== "OCCUPIED")}
+                    disabled={!table.openAccountId && !canOpen && table.status !== "OCCUPIED"}
                   >
                     <span className="dj-table__name">{table.name}</span>
                     <span className="dj-table__capacity">{table.capacity} personas</span>
                     <span className="dj-table__status">{STATUS_LABEL[table.status]}</span>
-                    {openingTableId === table.id ? <span className="dj-table__status">Abriendo…</span> : null}
                   </button>
                 ))}
               </div>

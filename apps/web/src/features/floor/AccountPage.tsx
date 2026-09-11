@@ -166,8 +166,7 @@ export function AccountPage() {
           <ConsumptionForm
             products={catalog.snapshot.products}
             accompaniments={catalog.snapshot.accompaniments}
-            expectedVersion={account.version}
-            onSubmit={(input) => api.confirmConsumption(account.id, input)}
+            onSubmit={(items) => api.confirmConsumption(account.id, { expectedVersion: account.version, items })}
             onConfirmed={(result) => {
               setLastResult(result);
               reload();

@@ -1,0 +1,9 @@
+.dj-pending-order {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dj-space-4);
+}
+
+.dj-pending-order__meta {
+  color: var(--dj-color-text-muted);
+}

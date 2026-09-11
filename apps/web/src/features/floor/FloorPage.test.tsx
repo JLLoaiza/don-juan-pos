@@ -36,6 +36,7 @@ function renderFloor(auth: AuthContextValue, initialEntries: string[] = ["/floor
       <MemoryRouter initialEntries={initialEntries}>
         <Routes>
           <Route path="/floor" element={<FloorPage />} />
+          <Route path="/floor/tables/:tableId/order" element={<div>Pending order view</div>} />
           <Route path="/floor/accounts/:accountId" element={<div>Account view</div>} />
         </Routes>
       </MemoryRouter>
@@ -93,9 +94,9 @@ describe("FloorPage", () => {
     expect(await screen.findByText("Account view")).toBeInTheDocument();
   });
 
-  it("opens an account on an available table when the user has accounts.open, and navigates to it", async () => {
+  it("navigates to the pending order flow for an available table without calling POST /accounts", async () => {
     const authGet = vi.fn().mockResolvedValue(SNAPSHOT);
-    const authPost = vi.fn().mockResolvedValue({ id: "new-account", status: "OPEN" });
+    const authPost = vi.fn();
     renderFloor(
       makeAuth({
         authGet: authGet as unknown as AuthContextValue["authGet"],
@@ -105,10 +106,8 @@ describe("FloorPage", () => {
     );
 
     fireEvent.click((await screen.findByText("Mesa 1")).closest("button")!);
-    await waitFor(() => expect(authPost).toHaveBeenCalled());
-    expect(authPost.mock.calls[0]?.[0]).toBe("/accounts");
-    expect(authPost.mock.calls[0]?.[2]).toEqual({ tableId: "t1", notes: null });
-    expect(await screen.findByText("Account view")).toBeInTheDocument();
+    expect(await screen.findByText("Pending order view")).toBeInTheDocument();
+    expect(authPost).not.toHaveBeenCalled();
   });
 
   it("does not let a user without accounts.open open a table", async () => {

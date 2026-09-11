@@ -5,6 +5,7 @@ import { RequireAuth } from "./features/auth/RequireAuth";
 import { HomePage } from "./features/auth/HomePage";
 import { FloorPage } from "./features/floor/FloorPage";
 import { AccountPage } from "./features/floor/AccountPage";
+import { PendingOrderPage } from "./features/floor/PendingOrderPage";
 import { CatalogPage } from "./features/catalog/CatalogPage";
 import { KitchenPage } from "./features/kitchen/KitchenPage";
 import { BillingPage } from "./features/billing/BillingPage";
@@ -23,6 +24,7 @@ export function App() {
         <Route element={<AppShell />}>
           <Route index element={<HomePage />} />
           <Route path="floor" element={<FloorPage />} />
+          <Route path="floor/tables/:tableId/order" element={<PendingOrderPage />} />
           <Route path="floor/accounts/:accountId" element={<AccountPage />} />
           <Route path="catalog" element={<CatalogPage />} />
           <Route path="kitchen" element={<KitchenPage />} />

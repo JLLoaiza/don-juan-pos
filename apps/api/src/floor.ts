@@ -106,7 +106,6 @@ export class FloorService {
       }
       const accountId = uuidv7();
       await client.query(`INSERT INTO accounts(id,branch_id,table_id,customer_id,opened_by_user_id,notes) VALUES($1,$2,$3,$4,$5,$6)`, [accountId, actor.branchId, table.id, input.customerId ?? null, actor.userId, input.notes ?? null]);
-      await client.query("UPDATE restaurant_tables SET status='OCCUPIED' WHERE id=$1", [table.id]);
       const result = await this.accountSnapshot(client, accountId, actor.branchId);
       await this.audit(client, actor, companyId, "account.opened", "account", accountId, { tableStatus: table.status }, result);
       await this.outbox(client, actor, operationId, "accounts.open", "account", accountId, result);
@@ -190,6 +189,7 @@ export class FloorService {
       const print = await one<any>(client, `INSERT INTO print_jobs(id,branch_id,printer_type,printer_id,document_type,reference_type,reference_id,payload,status,error_message)
         VALUES($1,$2,'KITCHEN',$3,'KITCHEN_ORDER','KITCHEN_ORDER',$4,$5,$6,$7) RETURNING *`, [uuidv7(), actor.branchId, printer?.id ?? null, kitchenOrder.id, kitchenContent, printer ? "PENDING" : "FAILED", printer ? null : "No active kitchen printer is configured"]);
       if (!print) throw new Error("Print job insert did not return a row");
+      if (account.table_id) await client.query("UPDATE restaurant_tables SET status='OCCUPIED' WHERE id=$1", [account.table_id]);
       const accountResult = await this.accountSnapshot(client, accountId, actor.branchId, true);
       const result: ConfirmConsumptionResponse = { account: accountResult, kitchenOrder: { id: kitchenOrder.id, ticketNumber: kitchenOrder.ticket_number, orderType: kitchenOrder.order_type, content: kitchenOrder.content, createdAt: asDate(kitchenOrder.created_at) }, printJob: { id: print.id, printerId: print.printer_id, documentType: print.document_type, status: print.status, attempts: Number(print.attempts), createdAt: asDate(print.created_at) }, warnings };
       await this.audit(client, actor, companyId, "account.consumption_confirmed", "account", accountId, { version: Number(account.version) }, { itemIds: createdItems.map((item) => item.id), result });

@@ -1,8 +1,11 @@
 import { useState, type FormEvent } from "react";
+import { z } from "zod";
 import { Banner, Button } from "@don-juan/ui";
-import { ConfirmConsumptionRequestSchema, type ConfirmConsumptionRequest, type ConfirmConsumptionResponse } from "@don-juan/contracts";
+import { ConfirmConsumptionItemSchema, type ConfirmConsumptionRequest, type ConfirmConsumptionResponse } from "@don-juan/contracts";
 import type { Accompaniment, Product } from "../catalog/catalogApi";
 import { formatMoney } from "../catalog/format";
+
+const ConsumptionItemsSchema = z.array(ConfirmConsumptionItemSchema).min(1);
 
 interface DraftItem {
   productId: string;
@@ -24,12 +27,11 @@ function newDraftItem(defaultProductId: string): DraftItem {
 export interface ConsumptionFormProps {
   readonly products: ReadonlyArray<Product>;
   readonly accompaniments: ReadonlyArray<Accompaniment>;
-  readonly expectedVersion: number;
-  readonly onSubmit: (input: ConfirmConsumptionRequest) => Promise<ConfirmConsumptionResponse>;
+  readonly onSubmit: (items: ConfirmConsumptionRequest["items"]) => Promise<ConfirmConsumptionResponse>;
   readonly onConfirmed: (result: ConfirmConsumptionResponse) => void;
 }
 
-export function ConsumptionForm({ products, accompaniments, expectedVersion, onSubmit, onConfirmed }: ConsumptionFormProps) {
+export function ConsumptionForm({ products, accompaniments, onSubmit, onConfirmed }: ConsumptionFormProps) {
   const activeProducts = products.filter((product) => product.active);
   const accompanimentById = new Map(accompaniments.map((entry) => [entry.id, entry]));
   const [items, setItems] = useState<DraftItem[]>([]);
@@ -78,19 +80,16 @@ export function ConsumptionForm({ products, accompaniments, expectedVersion, onS
     if (submitting) return;
     setError(null);
 
-    const payload: ConfirmConsumptionRequest = {
-      expectedVersion,
-      items: items.map((item) => ({
-        productId: item.productId,
-        quantity: item.quantity,
-        selectedAdditionals: item.selectedAdditionalIds.map((accompanimentId) => ({
-          accompanimentId,
-          noCharge: item.noChargeIds.includes(accompanimentId),
-        })),
-        notes: item.notes.trim().length > 0 ? item.notes : null,
+    const payload: ConfirmConsumptionRequest["items"] = items.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      selectedAdditionals: item.selectedAdditionalIds.map((accompanimentId) => ({
+        accompanimentId,
+        noCharge: item.noChargeIds.includes(accompanimentId),
       })),
-    };
-    const parsed = ConfirmConsumptionRequestSchema.safeParse(payload);
+      notes: item.notes.trim().length > 0 ? item.notes : null,
+    }));
+    const parsed = ConsumptionItemsSchema.safeParse(payload);
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? "Datos inválidos.");
       return;
