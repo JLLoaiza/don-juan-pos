@@ -26,6 +26,9 @@ export const RestaurantTableSchema = z.object({
   status: TableStatusSchema,
   active: z.boolean(),
   openAccountId: EntityIdSchema.nullable(),
+  version: PositiveVersionSchema,
+  canMarkAvailable: z.boolean(),
+  availabilityBlocker: z.enum(["OPEN_ACCOUNT_OR_ACTIVE_ORDERS"]).nullable(),
 });
 
 /** Read model for the floor of the active branch. */
@@ -56,6 +59,14 @@ export const OpenAccountRequestSchema = z.object({
   customerId: EntityIdSchema.nullable().optional(),
   notes: NotesSchema,
 });
+
+/** Tenant, branch and actor always come from the authenticated session. */
+export const ChangeRestaurantTableStatusRequestSchema = z.object({
+  targetStatus: z.enum(["AVAILABLE", "OCCUPIED"]),
+  expectedVersion: PositiveVersionSchema,
+});
+
+export const ChangeRestaurantTableStatusResponseSchema = RestaurantTableSchema;
 
 export const SelectedAdditionalSchema = z.object({
   accompanimentId: EntityIdSchema,
@@ -162,6 +173,8 @@ export type FloorSnapshot = z.infer<typeof FloorSnapshotSchema>;
 export type CreateDiningAreaRequest = z.infer<typeof CreateDiningAreaRequestSchema>;
 export type CreateRestaurantTableRequest = z.infer<typeof CreateRestaurantTableRequestSchema>;
 export type OpenAccountRequest = z.infer<typeof OpenAccountRequestSchema>;
+export type ChangeRestaurantTableStatusRequest = z.infer<typeof ChangeRestaurantTableStatusRequestSchema>;
+export type ChangeRestaurantTableStatusResponse = z.infer<typeof ChangeRestaurantTableStatusResponseSchema>;
 export type ConfirmConsumptionRequest = z.infer<typeof ConfirmConsumptionRequestSchema>;
 export type AccountSnapshot = z.infer<typeof AccountSnapshotSchema>;
 export type ConfirmConsumptionResponse = z.infer<typeof ConfirmConsumptionResponseSchema>;

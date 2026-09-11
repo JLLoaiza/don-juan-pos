@@ -104,7 +104,8 @@ export class ReplicationService {
       await client.query(
         `INSERT INTO cloud_replica_entities(branch_id,entity_type,entity_id,entity_version,payload,source_operation_id)
          VALUES($1,$2,$3,$4,$5,$6)
-         ON CONFLICT(branch_id,entity_type,entity_id) DO UPDATE SET entity_version=EXCLUDED.entity_version,payload=EXCLUDED.payload,replicated_at=NOW(),source_operation_id=EXCLUDED.source_operation_id`,
+         ON CONFLICT(branch_id,entity_type,entity_id) DO UPDATE SET entity_version=EXCLUDED.entity_version,payload=EXCLUDED.payload,replicated_at=NOW(),source_operation_id=EXCLUDED.source_operation_id
+         WHERE cloud_replica_entities.entity_version IS NULL OR EXCLUDED.entity_version IS NULL OR EXCLUDED.entity_version >= cloud_replica_entities.entity_version`,
         [server.branch_id, event.aggregateType, event.aggregateId, version, event.payload, event.operationId]);
       await client.query("UPDATE edge_servers SET last_received_at=NOW() WHERE id=$1", [server.id]);
       return { status: "ACCEPTED" as const, receiptCursor: inserted.receipt_cursor, receivedAt: instant(inserted.received_at)! };

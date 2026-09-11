@@ -44,16 +44,19 @@ describeIntegration("PostgreSQL migrations", () => {
       "0026_sync_push_conflicts.sql",
       "0027_local_first_edge_replication.sql",
       "0028_reports_permissions.sql",
+      "0029_restaurant_table_status_concurrency.sql",
     ]);
 
     const integrity = await pool.query<{ index_exists: string | null; version_exists: string | null }>(`
       SELECT
         to_regclass('public.ux_accounts_one_open_account_per_table') AS index_exists,
-        to_regclass('public.printers') AS version_exists
+        to_regclass('public.printers') AS version_exists,
+        (SELECT version::text FROM restaurant_tables LIMIT 1) AS table_version
     `);
     expect(integrity.rows[0]).toEqual({
       index_exists: "ux_accounts_one_open_account_per_table",
       version_exists: "printers",
+      table_version: null,
     });
     await expect(migrate(pool)).resolves.toEqual([]);
   });

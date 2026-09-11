@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { AccountSnapshot, ConfirmConsumptionRequest, ConfirmConsumptionResponse, FloorSnapshot, OpenAccountRequest } from "@don-juan/contracts";
+import type { AccountSnapshot, ChangeRestaurantTableStatusRequest, ConfirmConsumptionRequest, ConfirmConsumptionResponse, FloorSnapshot, OpenAccountRequest, RestaurantTable } from "@don-juan/contracts";
 import { addDecimals, compareDecimals, divideDecimals, multiplyDecimals, uuidv7 } from "@don-juan/domain";
 import { one, withTransaction } from "@don-juan/database";
 import type { Pool, PoolClient } from "pg";
@@ -69,9 +69,9 @@ export class FloorService {
       if (!area) throw new CatalogRuleViolation("Active dining area was not found in the current branch");
       if (input.status === "OCCUPIED") throw new CatalogRuleViolation("A table cannot be occupied before an account is opened");
       const id = uuidv7();
-      const table = await one<any>(client, "INSERT INTO restaurant_tables(id,dining_area_id,name,capacity,status) VALUES($1,$2,$3,$4,$5) RETURNING id,dining_area_id,name,capacity,status,active", [id, area.id, input.name, input.capacity, input.status]);
+      const table = await one<any>(client, "INSERT INTO restaurant_tables(id,dining_area_id,name,capacity,status) VALUES($1,$2,$3,$4,$5) RETURNING id,dining_area_id,name,capacity,status,active,version", [id, area.id, input.name, input.capacity, input.status]);
       if (!table) throw new Error("Restaurant table insert did not return a row");
-      const result = { id: table.id, diningAreaId: table.dining_area_id, name: table.name, capacity: Number(table.capacity), status: table.status, active: table.active, openAccountId: null };
+      const result: RestaurantTable = { id: table.id, diningAreaId: table.dining_area_id, name: table.name, capacity: Number(table.capacity), status: table.status, active: table.active, openAccountId: null, version: Number(table.version), canMarkAvailable: false, availabilityBlocker: null };
       await this.audit(client, actor, companyId, "restaurant_table.created", "restaurant_table", id, null, result);
       await this.outbox(client, actor, operationId, "tables.create", "restaurant_table", id, result);
       return result;
@@ -79,11 +79,39 @@ export class FloorService {
   }
   async floor(actor: FloorActor): Promise<FloorSnapshot> {
     const areas = (await this.pool.query<any>("SELECT id,name,active FROM dining_areas WHERE branch_id=$1 AND active ORDER BY name", [actor.branchId])).rows;
-    const tables = (await this.pool.query<any>(`SELECT t.id,t.dining_area_id,t.name,t.capacity,t.status,t.active,a.id open_account_id
+    const tables = (await this.pool.query<any>(`SELECT t.id,t.dining_area_id,t.name,t.capacity,t.status,t.active,t.version,a.id open_account_id
       FROM restaurant_tables t JOIN dining_areas d ON d.id=t.dining_area_id
       LEFT JOIN accounts a ON a.table_id=t.id AND a.status='OPEN'
       WHERE d.branch_id=$1 AND d.active AND t.active ORDER BY d.name,t.name`, [actor.branchId])).rows;
-    return { diningAreas: areas.map((row) => ({ id: row.id, name: row.name, active: row.active })), tables: tables.map((row) => ({ id: row.id, diningAreaId: row.dining_area_id, name: row.name, capacity: Number(row.capacity), status: row.status, active: row.active, openAccountId: row.open_account_id })) };
+    return { diningAreas: areas.map((row) => ({ id: row.id, name: row.name, active: row.active })), tables: tables.map((row) => this.tableReadModel(row)) };
+  }
+
+  async changeTableStatus(actor: FloorActor, operationId: string, tableId: string, input: ChangeRestaurantTableStatusRequest): Promise<RestaurantTable> {
+    return this.command(actor, operationId, "tables.change_status", { tableId, ...input }, async (client, companyId) => {
+      const table = await one<any>(client, `SELECT t.id,t.dining_area_id,t.name,t.capacity,t.status,t.active,t.version
+        FROM restaurant_tables t JOIN dining_areas d ON d.id=t.dining_area_id
+        WHERE t.id=$1 AND d.branch_id=$2 AND d.active AND t.active FOR UPDATE`, [tableId, actor.branchId]);
+      if (!table) throw new CatalogRuleViolation("Active table was not found in the current branch");
+      if (Number(table.version) !== input.expectedVersion) throw new CatalogConflict("The table status changed. Refresh the table and try again");
+      const openAccount = await one<{ id: string }>(client, "SELECT id FROM accounts WHERE table_id=$1 AND status='OPEN'", [table.id]);
+      const current = this.tableReadModel({ ...table, open_account_id: openAccount?.id ?? null });
+      if (table.status === input.targetStatus) return current;
+      if (input.targetStatus === "AVAILABLE") {
+        if (table.status !== "OCCUPIED") throw new CatalogRuleViolation("Only an occupied table can be marked available");
+        if (openAccount) throw new CatalogRuleViolation("The table cannot be marked available while it has an open account or active orders");
+      } else if (table.status !== "AVAILABLE") {
+        throw new CatalogRuleViolation("Only an available table can be marked occupied");
+      }
+      const updated = await one<any>(client, `UPDATE restaurant_tables SET status=$2,version=version+1
+        WHERE id=$1 RETURNING id,dining_area_id,name,capacity,status,active,version`, [table.id, input.targetStatus]);
+      if (!updated) throw new Error("Restaurant table status update did not return a row");
+      const result = this.tableReadModel({ ...updated, open_account_id: openAccount?.id ?? null });
+      await this.audit(client, actor, companyId, "restaurant_table.status_changed", "restaurant_table", table.id,
+        { status: table.status, version: Number(table.version), origin: "MANUAL" },
+        { status: result.status, version: result.version, origin: "MANUAL", table: result });
+      await this.outbox(client, actor, operationId, "tables.change_status", "restaurant_table", table.id, result);
+      return result;
+    });
   }
 
   async account(actor: FloorActor, accountId: string, includeCosts = false): Promise<AccountSnapshot> {
@@ -96,8 +124,7 @@ export class FloorService {
       const table = await one<{ id: string; status: string; active: boolean }>(client, `SELECT t.id,t.status,t.active FROM restaurant_tables t
         JOIN dining_areas d ON d.id=t.dining_area_id WHERE t.id=$1 AND d.branch_id=$2 FOR UPDATE`, [input.tableId, actor.branchId]);
       if (!table || !table.active) throw new CatalogRuleViolation("Active table was not found in the current branch");
-      if (table.status === "OCCUPIED") throw new CatalogConflict("The table already has an open account");
-      if (table.status !== "AVAILABLE" && table.status !== "RESERVED") throw new CatalogRuleViolation("The table cannot receive an account");
+      if (table.status !== "AVAILABLE" && table.status !== "OCCUPIED" && table.status !== "RESERVED") throw new CatalogRuleViolation("The table cannot receive an account");
       const existing = await one<{ id: string }>(client, "SELECT id FROM accounts WHERE table_id=$1 AND status='OPEN' FOR UPDATE", [table.id]);
       if (existing) throw new CatalogConflict("The table already has an open account");
       if (input.customerId) {
@@ -106,6 +133,7 @@ export class FloorService {
       }
       const accountId = uuidv7();
       await client.query(`INSERT INTO accounts(id,branch_id,table_id,customer_id,opened_by_user_id,notes) VALUES($1,$2,$3,$4,$5,$6)`, [accountId, actor.branchId, table.id, input.customerId ?? null, actor.userId, input.notes ?? null]);
+      await client.query("UPDATE restaurant_tables SET status='OCCUPIED',version=version+1 WHERE id=$1", [table.id]);
       const result = await this.accountSnapshot(client, accountId, actor.branchId);
       await this.audit(client, actor, companyId, "account.opened", "account", accountId, { tableStatus: table.status }, result);
       await this.outbox(client, actor, operationId, "accounts.open", "account", accountId, result);
@@ -189,7 +217,7 @@ export class FloorService {
       const print = await one<any>(client, `INSERT INTO print_jobs(id,branch_id,printer_type,printer_id,document_type,reference_type,reference_id,payload,status,error_message)
         VALUES($1,$2,'KITCHEN',$3,'KITCHEN_ORDER','KITCHEN_ORDER',$4,$5,$6,$7) RETURNING *`, [uuidv7(), actor.branchId, printer?.id ?? null, kitchenOrder.id, kitchenContent, printer ? "PENDING" : "FAILED", printer ? null : "No active kitchen printer is configured"]);
       if (!print) throw new Error("Print job insert did not return a row");
-      if (account.table_id) await client.query("UPDATE restaurant_tables SET status='OCCUPIED' WHERE id=$1", [account.table_id]);
+      if (account.table_id) await client.query("UPDATE restaurant_tables SET status='OCCUPIED',version=version+1 WHERE id=$1", [account.table_id]);
       const accountResult = await this.accountSnapshot(client, accountId, actor.branchId, true);
       const result: ConfirmConsumptionResponse = { account: accountResult, kitchenOrder: { id: kitchenOrder.id, ticketNumber: kitchenOrder.ticket_number, orderType: kitchenOrder.order_type, content: kitchenOrder.content, createdAt: asDate(kitchenOrder.created_at) }, printJob: { id: print.id, printerId: print.printer_id, documentType: print.document_type, status: print.status, attempts: Number(print.attempts), createdAt: asDate(print.created_at) }, warnings };
       await this.audit(client, actor, companyId, "account.consumption_confirmed", "account", accountId, { version: Number(account.version) }, { itemIds: createdItems.map((item) => item.id), result });
@@ -229,6 +257,16 @@ export class FloorService {
   private async outbox(client: PoolClient, actor: FloorActor, operationId: string, commandName: string, aggregateType: string, aggregateId: string, payload: unknown) {
     await client.query(`INSERT INTO sync_outbox(branch_id,operation_id,command_name,aggregate_type,aggregate_id,payload)
       VALUES($1,$2,$3,$4,$5,$6)`, [actor.branchId, operationId, commandName, aggregateType, aggregateId, payload]);
+  }
+
+  private tableReadModel(row: any): RestaurantTable {
+    const openAccountId = row.open_account_id ?? null;
+    return {
+      id: row.id, diningAreaId: row.dining_area_id, name: row.name, capacity: Number(row.capacity), status: row.status,
+      active: row.active, openAccountId, version: Number(row.version),
+      canMarkAvailable: row.status === "OCCUPIED" && !openAccountId,
+      availabilityBlocker: openAccountId ? "OPEN_ACCOUNT_OR_ACTIVE_ORDERS" : null,
+    };
   }
 }
 

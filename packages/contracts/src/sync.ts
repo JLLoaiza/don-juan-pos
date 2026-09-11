@@ -7,7 +7,7 @@ export const SyncOutboxStatusSchema = z.enum(["PENDING", "DELIVERED", "FAILED", 
 export const SyncOperationNameSchema = z.enum([
   "catalog.inventory_item.create", "catalog.inventory_item.update", "catalog.inventory_item.adjust",
   "catalog.accompaniment.create", "catalog.accompaniment.update", "catalog.product.create", "catalog.product.update",
-  "dining_areas.create", "tables.create", "accounts.open", "accounts.confirm_consumption",
+  "dining_areas.create", "tables.create", "tables.change_status", "accounts.open", "accounts.confirm_consumption",
   "accounts.apply_discount", "accounts.configure_service", "accounts.register_payment",
   "cash_sessions.open", "cash_sessions.adjust", "cash_sessions.close",
   "suppliers.create", "suppliers.update", "purchases.confirm", "purchases.void", "expenses.create", "expenses.void",

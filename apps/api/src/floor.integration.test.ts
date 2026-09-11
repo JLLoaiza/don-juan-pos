@@ -33,8 +33,8 @@ describeIntegration("floor consumption transaction", () => {
   it("opens one table account and commits snapshots, Kardex, kitchen, print and outbox atomically", async () => {
     const opened = await floor.openAccount(actor, randomUUID(), { tableId, notes: "Birthday", customerId: null });
     expect(opened.status).toBe("OPEN");
-    const tableAfterOpening = await pool.query("SELECT status FROM restaurant_tables WHERE id=$1", [tableId]);
-    expect(tableAfterOpening.rows[0]?.status).toBe("AVAILABLE");
+    const tableAfterOpening = await pool.query("SELECT status,version FROM restaurant_tables WHERE id=$1", [tableId]);
+    expect(tableAfterOpening.rows[0]).toEqual({ status: "OCCUPIED", version: "2" });
     const operationId = randomUUID();
     const result = await floor.confirmConsumption(actor, operationId, opened.id, { expectedVersion: opened.version, items: [{ productId, quantity: "2", selectedAdditionals: [], notes: "Well done" }] }, true);
     const replay = await floor.confirmConsumption(actor, operationId, opened.id, { expectedVersion: opened.version, items: [{ productId, quantity: "2", selectedAdditionals: [], notes: "Well done" }] }, true);
@@ -47,7 +47,7 @@ describeIntegration("floor consumption transaction", () => {
     expect(stock.rows[0]?.current_stock).toBe("4.000000");
     const movements = await pool.query("SELECT movement_type,quantity,stock_before,stock_after FROM inventory_movements WHERE inventory_item_id=$1 ORDER BY created_at", [inventoryId]);
     expect(movements.rows).toContainEqual({ movement_type: "SALE", quantity: "-6.000000", stock_before: "10.000000", stock_after: "4.000000" });
-    const consistency = await pool.query("SELECT (SELECT status FROM restaurant_tables WHERE id=$1) table_status,(SELECT count(*)::int FROM kitchen_orders WHERE account_id=$2) kitchen_orders,(SELECT count(*)::int FROM print_jobs WHERE reference_id=(SELECT id FROM kitchen_orders WHERE account_id=$2)) print_jobs,(SELECT count(*)::int FROM sync_outbox WHERE operation_id=$3) outbox", [tableId, opened.id, operationId]);
-    expect(consistency.rows[0]).toEqual({ table_status: "OCCUPIED", kitchen_orders: 1, print_jobs: 1, outbox: 1 });
+    const consistency = await pool.query("SELECT (SELECT status FROM restaurant_tables WHERE id=$1) table_status,(SELECT version::text FROM restaurant_tables WHERE id=$1) table_version,(SELECT count(*)::int FROM kitchen_orders WHERE account_id=$2) kitchen_orders,(SELECT count(*)::int FROM print_jobs WHERE reference_id=(SELECT id FROM kitchen_orders WHERE account_id=$2)) print_jobs,(SELECT count(*)::int FROM sync_outbox WHERE operation_id=$3) outbox", [tableId, opened.id, operationId]);
+    expect(consistency.rows[0]).toEqual({ table_status: "OCCUPIED", table_version: "3", kitchen_orders: 1, print_jobs: 1, outbox: 1 });
   });
 });
