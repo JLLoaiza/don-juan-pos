@@ -1,7 +1,7 @@
 # Feature: Control manual del estado de una mesa
 
 - **Slug:** `control-manual-estado-mesa`
-- **Estado:** `DRAFT`
+- **Estado:** `COMPLETE`
 - **Creada:** `2026-09-10`
 - **Última actualización:** `2026-09-10`
 - **Feature Manager:** `Codex /root`
@@ -17,10 +17,10 @@ Permitir que, al abrir una mesa desde `/floor`, el usuario pueda marcarla manual
 
 ## Resultado esperado del expediente
 
-- [ ] Definición de producto completa
-- [ ] Aprobación explícita de producto registrada
-- [ ] Plan técnico trazable
-- [ ] Handoff listo para futura orquestación de desarrollo
+- [x] Definición de producto completa
+- [x] Aprobación explícita de producto registrada
+- [x] Plan técnico trazable
+- [x] Handoff listo para futura orquestación de desarrollo
 
 ## Documentos
 
@@ -45,4 +45,4 @@ Permitir que, al abrir una mesa desde `/floor`, el usuario pueda marcarla manual
 
 ## Estado resumido
 
-Expediente admitido. No existe una feature equivalente. La definición funcional fue delegada al Product Expert; el Technical Planner permanece sin iniciar hasta aprobación explícita del usuario.
+Expediente `COMPLETE`: definición de producto versión `0.2` aprobada y plan técnico trazable `TECHNICALLY_PLANNED`. Está listo para una futura orquestación de desarrollo; la feature no está implementada.

@@ -42,6 +42,36 @@ Registro append-only de hallazgos, contradicciones, bloqueos y mensajes entre ag
 - **Responsable:** `Feature Manager`
 - **Estado:** `RESOLVED`
 
+## 2026-09-10 — Feature Manager — Aprobación explícita y apertura de compuerta técnica
+
+- **Tipo:** `HANDOFF`
+- **Contexto:** El usuario revisó el resumen de la versión `0.2`, incluida la interpretación de que una cuenta `OPEN` vacía bloquea liberar.
+- **Evidencia:** Respuesta literal del usuario: “Listo, está bien”; `handoffs/product-to-technical.md` completado.
+- **Impacto:** Se autoriza iniciar planificación técnica exclusivamente sobre la versión `0.2`.
+- **Acción requerida:** Inspeccionar el repositorio real y producir `technical-plan.md` trazable.
+- **Responsable:** `Technical Planner`
+- **Estado:** `OPEN`
+
+## 2026-09-10 — Technical Planner — Handoff de planificación
+
+- **Tipo:** `HANDOFF`
+- **Contexto:** Planificación realizada exclusivamente sobre producto versión `0.2` aprobada.
+- **Evidencia:** `technical-plan.md` en `TECHNICALLY_PLANNED`, con `TECH-001..009`, pruebas y matrices completas.
+- **Impacto:** Existe una ruta incremental para contratos, persistencia, API, compatibilidad comercial, PWA, réplica y observabilidad.
+- **Acción requerida:** Control final del Feature Manager.
+- **Responsable:** `Feature Manager`
+- **Estado:** `RESOLVED`
+
+## 2026-09-10 — Feature Manager — Control de calidad y cierre
+
+- **Tipo:** `RESOLUCIÓN`
+- **Contexto:** Revisión de robustez, coherencia y trazabilidad del expediente.
+- **Evidencia:** Los diez `PRD-*` tienen cobertura `TECH-*`; los once `AC-*` tienen pruebas previstas; migración, compatibilidad, seguridad, permisos, auditoría, concurrencia, idempotencia, Edge/Cloud y observabilidad fueron evaluados; no hay bloqueos críticos.
+- **Impacto:** El expediente queda listo para futura orquestación de desarrollo.
+- **Acción requerida:** Ninguna dentro de este cluster.
+- **Responsable:** `Feature Manager`
+- **Estado:** `RESOLVED`
+
 ## 2026-09-10 — Feature Manager — Revisión de calidad de producto
 
 - **Tipo:** `RESOLUCIÓN`

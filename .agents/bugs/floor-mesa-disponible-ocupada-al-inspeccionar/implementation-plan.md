@@ -1,6 +1,6 @@
 # Plan de implementación del bug — Una mesa disponible pasa a ocupada al inspeccionarla
 
-- **Estado:** `FRONTEND_HANDOFF_READY`
+- **Estado:** `RESOLVED`
 - **Clasificación:** `MIXED`
 - **Última actualización:** `2026-09-10`
 
@@ -9,7 +9,7 @@
 Separar la creación de una cuenta borrador de la ocupación física de la mesa:
 
 1. **Completado backend:** `openAccount` conserva `AVAILABLE`; `confirmConsumption` cambia a `OCCUPIED` en su transacción; la integración cubre ambos estados.
-2. **Pendiente frontend:** separar inspección de creación de cuenta. Preparar el pedido en memoria y solo crear cuenta + confirmar consumo cuando el usuario confirme al menos un producto.
+2. **Completado frontend:** la inspección abre un pedido pendiente en memoria; solo confirmar al menos un producto crea la cuenta y confirma el consumo.
 
 ## Alternativas descartadas
 
@@ -75,6 +75,13 @@ En `floor.integration.test.ts`:
 2. `pnpm --filter @don-juan/api typecheck`
 3. Revisar `git diff --check` y `git diff -- apps/api/src/floor.ts apps/api/src/floor.integration.test.ts`.
 
+### Evidencia de ejecución final (2026-09-10)
+
+- `pnpm --filter @don-juan/web test -- FloorPage.test.tsx PendingOrderPage.test.tsx`: pasó (31 archivos, 188 pruebas).
+- `pnpm --filter @don-juan/web typecheck`: pasó.
+- `DATABASE_URL_TEST=postgresql://postgres:postgres@localhost:5433/app pnpm --filter @don-juan/api test src/floor.integration.test.ts`: pasó (1 archivo, 1 prueba).
+- `pnpm --filter @don-juan/api typecheck` y `git diff --check`: pasaron.
+
 ## Rollback o mitigación
 
 Revertir únicamente el cambio de servicio y su prueba restaura la semántica anterior. Como mitigación temporal sin despliegue, evitar abrir cuentas al inspeccionar, aunque no corrige los datos ya afectados.
@@ -89,4 +96,4 @@ Revertir únicamente el cambio de servicio y su prueba restaura la semántica an
 - Backend: integración focalizada, typecheck y `git diff --check` pasaron el 2026-09-10.
 - Frontend: inspeccionar no emite `POST /accounts`; confirmar el primer pedido crea una sola cuenta y confirma el consumo con la versión retornada.
 - Se cubren cancelación, permisos insuficientes, cuenta borrador preexistente y fallo entre los dos comandos.
-- Claude ejecuta pruebas focalizadas web y typecheck; el Analista revisa el diff y el resultado esperado en la aplicación.
+- Las pruebas web, typechecks y la integración focalizada fueron ejecutados; el Analista revisó el commit `d6e8e49` sin cambios ajenos.

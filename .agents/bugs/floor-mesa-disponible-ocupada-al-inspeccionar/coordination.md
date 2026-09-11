@@ -41,3 +41,13 @@ Registro append-only de hallazgos y handoffs entre agentes.
 - **Acción:** Se generó `handoffs/frontend-prompt.md` para Claude con contratos, recuperación ante errores y pruebas requeridas.
 - **Responsable:** `Claude (frontend)`
 - **Estado:** `OPEN`
+
+## 2026-09-10 21:28 — Analista Técnico — Verificación final y resolución
+
+- **Tipo:** `RESOLUCIÓN`
+- **Contexto:** Se inspeccionó el commit actual `d6e8e49`. `FloorPage` ya no crea la cuenta al inspeccionar y `PendingOrderPage` ejecuta la apertura y confirmación solo al enviar ítems válidos.
+- **Evidencia:** La prueba de `FloorPage` exige que no exista `POST /accounts` al pulsar la mesa; las pruebas de pedido pendiente cubren éxito, cancelación, permisos, borrador existente y fallo entre comandos. Pasaron 188 pruebas web, typechecks web/API y la integración backend focalizada contra PostgreSQL local.
+- **Impacto:** El estado y los datos operativos reflejan únicamente pedidos confirmados; no se crean cuentas por inspeccionar una mesa.
+- **Acción:** cierre del expediente.
+- **Responsable:** `Analista Técnico`
+- **Estado:** `RESOLVED`

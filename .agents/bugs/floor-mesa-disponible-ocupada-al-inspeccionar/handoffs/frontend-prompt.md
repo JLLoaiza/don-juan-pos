@@ -1,5 +1,7 @@
 # Prompt frontend para Claude — Separar inspección y creación de pedido en el salón
 
+> **Estado: `COMPLETED_AND_VERIFIED` (2026-09-10).** El cambio descrito fue implementado en el commit `d6e8e49` y revisado por el Analista Técnico: pasaron 188 pruebas web, typechecks web/API y la integración de salón contra PostgreSQL local. El prompt se conserva como evidencia del alcance; no requiere nueva ejecución.
+
 Implementa únicamente el frontend de este bug. No modifiques backend, contratos compartidos, migraciones, permisos backend ni pruebas API. No hagas commits, push ni PR.
 
 ## Objetivo y resultado esperado

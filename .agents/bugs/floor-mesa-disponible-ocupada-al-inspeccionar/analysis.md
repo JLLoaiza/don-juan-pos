@@ -1,6 +1,6 @@
 # Análisis del bug — Una mesa disponible pasa a ocupada al inspeccionarla
 
-- **Estado:** `FRONTEND_HANDOFF_READY`
+- **Estado:** `RESOLVED`
 - **Clasificación:** `MIXED`
 - **Confianza de causa raíz:** `HIGH`
 
@@ -10,7 +10,7 @@ La apertura de una cuenta asociada a una mesa, que es el efecto de inspeccionarl
 
 ## Resultado actual
 
-Al seleccionar una mesa `AVAILABLE`, `FloorPage.handleTableClick` todavía ejecuta `api.openAccount({ tableId, notes: null })` y navega a `/floor/accounts/:accountId`, aun si el usuario solo quería inspeccionarla. La corrección backend ya eliminó el cambio de estado de ese comando: una recarga de `/floor` devuelve `AVAILABLE` hasta la confirmación del primer consumo. Sin embargo, la UI conserva la mutación prematura de crear la cuenta, por lo que inspección e inicio de pedido siguen siendo la misma acción.
+Al seleccionar una mesa `AVAILABLE`, `FloorPage.handleTableClick` navega a `/floor/tables/:tableId/order` y no llama `POST /accounts`. La página de pedido pendiente mantiene los ítems en memoria; solo al confirmar los ítems válidos crea una cuenta y confirma el consumo con la `version` devuelta. La mesa sigue `AVAILABLE` después de abrir la cuenta y cambia a `OCCUPIED` dentro de la transacción de confirmación.
 
 ## Resultado esperado
 
@@ -34,11 +34,11 @@ La integración backend comprobó que la mesa sigue `AVAILABLE` inmediatamente d
 
 ## Primera divergencia observable
 
-La primera mutación restante incompatible con la inspección sin efectos es `FloorPage.handleTableClick`: llama a `api.openAccount` antes de que el usuario haya agregado o confirmado un ítem. El backend ya no modifica el estado en ese punto; el comando de creación de cuenta es ahora la divergencia observable.
+No queda divergencia observable: la inspección no emite comando y la primera mutación ocurre solo al confirmar un pedido válido.
 
 ## Causa raíz
 
-El defecto original tenía dos acoplamientos. `apps/web/src/features/floor/FloorPage.tsx` trata el clic como apertura de una cuenta borrador; antes, `FloorService.openAccount` además acoplaba esa creación al cambio de estado `OCCUPIED`. El backend fue corregido y comprobado. Persiste el acoplamiento frontend: la inspección provoca `POST /accounts` y obliga a entrar en una cuenta antes de que exista pedido.
+El defecto original tenía dos acoplamientos. `apps/web/src/features/floor/FloorPage.tsx` trataba el clic como apertura de una cuenta borrador; antes, `FloorService.openAccount` además acoplaba esa creación al cambio de estado `OCCUPIED`. El backend eliminó esa transición prematura y el frontend ahora separa el borrador local de los comandos backend.
 
 La UI debe separar el borrador local de ítems de los comandos backend. Al confirmar el borrador, debe obtener una cuenta real mediante `POST /accounts`, usar la `version` devuelta y llamar a `POST /accounts/:id/confirm-consumption`. La corrección backend ya persiste `OCCUPIED` dentro de esta última transacción.
 
@@ -53,14 +53,17 @@ La UI debe separar el borrador local de ítems de los comandos backend. Al confi
 - `apps/api/src/floor.integration.test.ts`: ejecutada contra PostgreSQL local el 2026-09-10; exige `AVAILABLE` tras abrir y `OCCUPIED` tras confirmar.
 - `git blame` atribuye la mutación al commit `0e52c3a feat(floor): add transactional table consumption` (2026-09-07).
 - El índice único `ux_accounts_one_open_account_per_table` de `infra/db/migrations/0002_accounts_integrity.sql` sigue evitando más de una cuenta abierta aunque la mesa se conserve `AVAILABLE` durante la inspección.
+- `apps/web/src/features/floor/FloorPage.tsx:54-62` ahora navega a `/floor/tables/:tableId/order` para una mesa disponible sin cuenta y no invoca `api.openAccount`.
+- `apps/web/src/features/floor/PendingOrderPage.tsx` conserva el borrador local y, al confirmar, llama secuencialmente `openAccount` y `confirmConsumption` con la versión devuelta. Si la confirmación falla, recupera la misma cuenta antes del reintento.
+- 2026-09-10: pasaron 188 pruebas web, los typechecks web/API y la integración de salón focalizada contra PostgreSQL local.
 
 ## Alcance e impacto
 
 - **Usuarios:** personal de salón con permiso de abrir cuentas.
 - **Módulos:** plano del salón, cuentas, reportes operativos y sincronización de comandos.
-- **Datos:** backend ya no persiste un estado de mesa falso, pero la UI aún crea una cuenta persistente sin pedido.
-- **Frecuencia:** determinística en cada primera inspección de una mesa disponible.
-- **Impacto operativo:** se crean cuentas borrador involuntarias; la interacción no expresa la diferencia entre revisar una mesa y comenzar un pedido.
+- **Datos:** no se crea cuenta ni se cambia la mesa al inspeccionar; el cambio persiste únicamente con el consumo confirmado.
+- **Frecuencia:** la regresión está cubierta por pruebas automatizadas de interacción y de integración.
+- **Impacto operativo:** la interacción distingue revisar una mesa de comenzar un pedido.
 
 ## Regresión y problemas hermanos
 
@@ -76,4 +79,4 @@ El backend era responsable de la transición prematura de estado y ya quedó est
 
 ## Información faltante
 
-La implementación frontend debe ser realizada por Claude y verificada en la aplicación web.
+Ninguna para el alcance reportado. La validación automatizada comprueba la ausencia de mutación al inspeccionar y la transición correcta tras confirmar consumo.

@@ -1,6 +1,6 @@
 # Definición de producto — Control manual del estado de una mesa
 
-- **Estado:** `DRAFT`
+- **Estado:** `PRODUCT_APPROVED`
 - **Versión:** `0.2`
 - **Última actualización:** `2026-09-10`
 

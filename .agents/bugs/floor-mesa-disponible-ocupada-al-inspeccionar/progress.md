@@ -1,13 +1,13 @@
 # Progreso del bug — Una mesa disponible pasa a ocupada al inspeccionarla
 
-- **Estado:** `PARTIAL`
-- **Responsable actual:** `Claude (frontend)`
+- **Estado:** `RESOLVED`
+- **Responsable actual:** `Analista Técnico`
 - **Última actualización:** `2026-09-10`
-- **Siguiente acción:** implementar y verificar el handoff frontend.
+- **Siguiente acción:** ninguna; preservar las pruebas de regresión.
 
 ## Checklist
 
-**Nota backend:** la regresión backend fue implementada y revisada. `pnpm --filter @don-juan/api test src/floor.integration.test.ts` pasó contra PostgreSQL local (`DATABASE_URL_TEST=postgresql://postgres:postgres@localhost:5433/app`); `pnpm --filter @don-juan/api typecheck` y `git diff --check` también pasaron. El frontend sigue creando una cuenta al inspeccionar y requiere el handoff adjunto.
+**Nota de resolución:** la regresión backend fue implementada y revisada. El frontend ya separa inspección y pedido pendiente; la validación final pasó contra PostgreSQL y en la suite web completa.
 
 - [x] Reporte original preservado
 - [x] Estado Git y cambios ajenos identificados
@@ -20,7 +20,7 @@
 - [x] Prueba de regresión definida
 - [x] Corrección backend verificada o marcada no aplicable
 - [x] Prompt frontend generado o marcado no aplicable
-- [ ] Resultado final comprobado
+- [x] Resultado final comprobado
 
 ## Historial
 
@@ -41,3 +41,9 @@
 - **Resultado:** El backend conserva `AVAILABLE` hasta el pedido, pero `FloorPage` aún llama `POST /accounts` al pulsar una mesa disponible.
 - **Evidencia:** Implementación y prueba actual de `FloorPage` inspeccionadas; se generó prompt autocontenido para Claude con los contratos backend estabilizados.
 - **Pendiente:** implementación y pruebas frontend por Claude.
+
+### 2026-09-10 — Verificación final de frontend y resolución
+
+- **Resultado:** Inspeccionar una mesa disponible navega a un pedido pendiente sin crear una cuenta. Confirmar productos abre una sola cuenta y confirma el consumo con la versión retornada; solo esa transacción ocupa la mesa.
+- **Evidencia:** `pnpm --filter @don-juan/web test -- FloorPage.test.tsx PendingOrderPage.test.tsx` pasó (31 archivos, 188 pruebas), ambos typechecks pasaron y la integración backend focalizada pasó contra PostgreSQL local.
+- **Pendiente:** ninguno para el alcance reportado.
