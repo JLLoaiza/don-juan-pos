@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { ChangeRestaurantTableStatusResponseSchema } from "@don-juan/contracts";
 import { createFloorApi } from "./floorApi";
 
 function fakeAuth() {
@@ -64,5 +65,29 @@ describe("createFloorApi", () => {
       { diningAreaId: "area-1", name: "Mesa 1", capacity: 4, status: "AVAILABLE" },
       expect.objectContaining({ "idempotency-key": expect.any(String) }),
     );
+  });
+
+  it("changes a table status with POST /restaurant-tables/:id/status, a fresh Idempotency-Key and the response schema", async () => {
+    const auth = fakeAuth();
+    await createFloorApi(auth).changeTableStatus("table-1", { targetStatus: "OCCUPIED", expectedVersion: 3 });
+    expect(auth.authPost).toHaveBeenCalledWith(
+      "/restaurant-tables/table-1/status",
+      ChangeRestaurantTableStatusResponseSchema,
+      { targetStatus: "OCCUPIED", expectedVersion: 3 },
+      expect.objectContaining({ "idempotency-key": expect.stringMatching(/^[0-9a-f-]{36}$/) }),
+    );
+  });
+
+  it("generates a distinct Idempotency-Key for each new status-change intent", async () => {
+    const auth = fakeAuth();
+    const api = createFloorApi(auth);
+    await api.changeTableStatus("table-1", { targetStatus: "OCCUPIED", expectedVersion: 3 });
+    await api.changeTableStatus("table-1", { targetStatus: "AVAILABLE", expectedVersion: 4 });
+    const calls = auth.authPost.mock.calls as unknown as Array<[string, unknown, unknown, Record<string, string>]>;
+    const firstKey = calls[0]?.[3]?.["idempotency-key"];
+    const secondKey = calls[1]?.[3]?.["idempotency-key"];
+    expect(firstKey).toBeDefined();
+    expect(secondKey).toBeDefined();
+    expect(firstKey).not.toBe(secondKey);
   });
 });

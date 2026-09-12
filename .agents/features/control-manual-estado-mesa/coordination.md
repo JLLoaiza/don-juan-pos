@@ -72,6 +72,16 @@ Registro append-only de hallazgos, contradicciones, bloqueos y mensajes entre ag
 - **Responsable:** `Feature Manager`
 - **Estado:** `RESOLVED`
 
+## 2026-09-11 — Codex — Registro de implementación e integración
+
+- **Tipo:** `HANDOFF`
+- **Contexto:** El usuario confirmó que backend y frontend estaban listos y solicitó commit, push y registro.
+- **Evidencia:** Backend en `7dcbcb0`; cambios frontend en siete archivos de `apps/web/src/features/floor/`; pruebas backend adicionales en cinco archivos. Typechecks, suite web, contratos y pruebas API sin PostgreSQL pasaron.
+- **Impacto:** La funcionalidad queda preparada para versionarse y publicarse en `main` con trazabilidad documental.
+- **Acción requerida:** Ejecutar integraciones PostgreSQL en CI o en un entorno con `DATABASE_URL_TEST`; no fueron ejecutables localmente por variable ausente.
+- **Responsable:** `Pipeline / futura validación de despliegue`
+- **Estado:** `OPEN`
+
 ## 2026-09-10 — Feature Manager — Revisión de calidad de producto
 
 - **Tipo:** `RESOLUCIÓN`

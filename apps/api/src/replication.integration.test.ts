@@ -70,4 +70,13 @@ describeIntegration("local-first Edge to Cloud replication", () => {
     expect(projection.entities).toHaveLength(2);
     await expect(cloudReplication.receiveEdgeEvent(edgeServerId, edgeServerToken, { operationId: randomUUID(), branchId: randomUUID(), commandName: "inventory.create", aggregateType: "inventory_item", aggregateId: randomUUID(), payload: {} })).rejects.toThrow("cannot replicate another branch");
   });
+  it("keeps the highest versioned table snapshot when Edge events arrive out of order", async () => {
+    const tableId = randomUUID();
+    const current = { id: tableId, version: 3, status: "OCCUPIED", origin: "MANUAL" };
+    const stale = { id: tableId, version: 2, status: "AVAILABLE", origin: "MANUAL" };
+    await cloudReplication.receiveEdgeEvent(edgeServerId, edgeServerToken, { operationId: randomUUID(), branchId, commandName: "tables.change_status", aggregateType: "restaurant_table", aggregateId: tableId, payload: current });
+    await cloudReplication.receiveEdgeEvent(edgeServerId, edgeServerToken, { operationId: randomUUID(), branchId, commandName: "tables.change_status", aggregateType: "restaurant_table", aggregateId: tableId, payload: stale });
+    const entity = (await cloudReplication.cloudEntities(actor, true)).entities.find((value) => value.entityId === tableId);
+    expect(entity).toMatchObject({ entityType: "restaurant_table", entityVersion: 3, payload: current });
+  });
 });

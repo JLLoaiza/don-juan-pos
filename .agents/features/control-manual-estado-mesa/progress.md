@@ -47,3 +47,10 @@
 - **Resultado:** Plan `TECHNICALLY_PLANNED` con nueve elementos `TECH-*`, fases ejecutables, riesgos, áreas críticas y doble matriz de trazabilidad para requisitos y criterios.
 - **Evidencia:** Cobertura completa de `PRD-001..010` y `AC-001..011`; `handoffs/technical-to-implementation.md` en `READY`.
 - **Pendiente:** Ninguno dentro del cluster. La implementación futura está fuera de alcance.
+
+### 2026-09-11 — Implementación backend y frontend verificada para entrega
+
+- **Resultado:** Backend base confirmado en `7dcbcb0`; frontend de `TECH-008` implementado en `FloorPage`, `PendingOrderPage` y `floorApi`. Se añadieron pruebas backend de rollback, concurrencia, liberación por pago, bloqueo con cuenta abierta y réplica monotónica.
+- **Evidencia:** `pnpm --filter @don-juan/web typecheck` correcto; suite web 31 archivos/202 pruebas correctas; typecheck API correcto; contratos 4 archivos/6 pruebas correctas; API 20 archivos/64 pruebas correctas y 22 archivos/56 pruebas omitidas; `git diff --check` correcto.
+- **Limitación de verificación:** `DATABASE_URL_TEST` no estaba configurada, por lo que las integraciones PostgreSQL no se ejecutaron en esta sesión. Las pruebas permanecen incluidas en `test:integration` para ejecución en un entorno con base de datos.
+- **Pendiente:** Commit, push y, antes de despliegue, ejecutar las integraciones PostgreSQL si el pipeline no las ejecuta automáticamente.

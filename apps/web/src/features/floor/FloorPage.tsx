@@ -56,6 +56,10 @@ export function FloorPage() {
       navigate(`/floor/accounts/${table.openAccountId}`);
       return;
     }
+    if (table.status === "OCCUPIED") {
+      navigate(`/floor/tables/${table.id}/order`);
+      return;
+    }
     if (!canOpen) return;
     if (table.status !== "AVAILABLE" && table.status !== "RESERVED") return;
     navigate(`/floor/tables/${table.id}/order`);

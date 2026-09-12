@@ -1,10 +1,12 @@
 import {
   AccountSnapshotSchema,
+  ChangeRestaurantTableStatusResponseSchema,
   ConfirmConsumptionResponseSchema,
   DiningAreaSchema,
   FloorSnapshotSchema,
   RestaurantTableSchema,
   type AccountSnapshot,
+  type ChangeRestaurantTableStatusRequest,
   type ConfirmConsumptionRequest,
   type ConfirmConsumptionResponse,
   type CreateDiningAreaRequest,
@@ -29,6 +31,7 @@ export interface FloorApi {
   confirmConsumption(accountId: string, input: ConfirmConsumptionRequest): Promise<ConfirmConsumptionResponse>;
   createDiningArea(input: CreateDiningAreaRequest): Promise<DiningArea>;
   createRestaurantTable(input: CreateRestaurantTableRequest): Promise<RestaurantTable>;
+  changeTableStatus(tableId: string, input: ChangeRestaurantTableStatusRequest): Promise<RestaurantTable>;
 }
 
 export function createFloorApi(auth: AuthClient): FloorApi {
@@ -40,5 +43,7 @@ export function createFloorApi(auth: AuthClient): FloorApi {
       auth.authPost(`/accounts/${accountId}/confirm-consumption`, ConfirmConsumptionResponseSchema, input, idempotencyHeaders()),
     createDiningArea: (input) => auth.authPost("/dining-areas", DiningAreaSchema, input, idempotencyHeaders()),
     createRestaurantTable: (input) => auth.authPost("/restaurant-tables", RestaurantTableSchema, input, idempotencyHeaders()),
+    changeTableStatus: (tableId, input) =>
+      auth.authPost(`/restaurant-tables/${tableId}/status`, ChangeRestaurantTableStatusResponseSchema, input, idempotencyHeaders()),
   };
 }

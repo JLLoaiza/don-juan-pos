@@ -47,8 +47,30 @@ function renderFloor(auth: AuthContextValue, initialEntries: string[] = ["/floor
 const SNAPSHOT: FloorSnapshot = {
   diningAreas: [{ id: "area-1", name: "Salón principal", active: true }],
   tables: [
-    { id: "t1", diningAreaId: "area-1", name: "Mesa 1", capacity: 4, status: "AVAILABLE", active: true, openAccountId: null },
-    { id: "t2", diningAreaId: "area-1", name: "Mesa 2", capacity: 2, status: "OCCUPIED", active: true, openAccountId: "acc-2" },
+    {
+      id: "t1",
+      diningAreaId: "area-1",
+      name: "Mesa 1",
+      capacity: 4,
+      status: "AVAILABLE",
+      active: true,
+      openAccountId: null,
+      version: 1,
+      canMarkAvailable: false,
+      availabilityBlocker: null,
+    },
+    {
+      id: "t2",
+      diningAreaId: "area-1",
+      name: "Mesa 2",
+      capacity: 2,
+      status: "OCCUPIED",
+      active: true,
+      openAccountId: "acc-2",
+      version: 1,
+      canMarkAvailable: false,
+      availabilityBlocker: "OPEN_ACCOUNT_OR_ACTIVE_ORDERS",
+    },
   ],
 };
 
@@ -148,7 +170,18 @@ describe("FloorPage", () => {
   it("creates a restaurant table end-to-end and reloads the floor", async () => {
     const areaId = "11111111-1111-7111-8111-111111111111";
     const authGet = vi.fn().mockResolvedValue({ diningAreas: [{ id: areaId, name: "Salón principal", active: true }], tables: [] });
-    const authPost = vi.fn().mockResolvedValue({ id: "t3", diningAreaId: areaId, name: "Mesa 3", capacity: 4, status: "AVAILABLE", active: true, openAccountId: null });
+    const authPost = vi.fn().mockResolvedValue({
+      id: "t3",
+      diningAreaId: areaId,
+      name: "Mesa 3",
+      capacity: 4,
+      status: "AVAILABLE",
+      active: true,
+      openAccountId: null,
+      version: 1,
+      canMarkAvailable: false,
+      availabilityBlocker: null,
+    });
     renderFloor(
       makeAuth({
         authGet: authGet as unknown as AuthContextValue["authGet"],
@@ -170,5 +203,58 @@ describe("FloorPage", () => {
       ),
     );
     await waitFor(() => expect(authGet).toHaveBeenCalledTimes(2));
+  });
+
+  it("opens the pending order page for an occupied table without an open account, with no accounts.open needed", async () => {
+    const authGet = vi.fn().mockResolvedValue({
+      diningAreas: [{ id: "area-1", name: "Salón principal", active: true }],
+      tables: [
+        {
+          id: "t3",
+          diningAreaId: "area-1",
+          name: "Mesa 3",
+          capacity: 4,
+          status: "OCCUPIED",
+          active: true,
+          openAccountId: null,
+          version: 2,
+          canMarkAvailable: true,
+          availabilityBlocker: null,
+        },
+      ],
+    });
+    renderFloor(makeAuth({ authGet: authGet as unknown as AuthContextValue["authGet"], context: baseContext({ permissions: [] }) }));
+
+    fireEvent.click((await screen.findByText("Mesa 3")).closest("button")!);
+    expect(await screen.findByText("Pending order view")).toBeInTheDocument();
+  });
+
+  it("still requires accounts.open for a reserved table, preserving the existing flow", async () => {
+    const authGet = vi.fn().mockResolvedValue({
+      diningAreas: [{ id: "area-1", name: "Salón principal", active: true }],
+      tables: [
+        {
+          id: "t4",
+          diningAreaId: "area-1",
+          name: "Mesa 4",
+          capacity: 4,
+          status: "RESERVED",
+          active: true,
+          openAccountId: null,
+          version: 1,
+          canMarkAvailable: false,
+          availabilityBlocker: null,
+        },
+      ],
+    });
+    renderFloor(
+      makeAuth({
+        authGet: authGet as unknown as AuthContextValue["authGet"],
+        context: baseContext({ permissions: ["accounts.open"] }),
+      }),
+    );
+
+    fireEvent.click((await screen.findByText("Mesa 4")).closest("button")!);
+    expect(await screen.findByText("Pending order view")).toBeInTheDocument();
   });
 });

@@ -95,4 +95,38 @@ describeIntegration("manual restaurant table status", () => {
     await expect(floor.changeTableStatus(actor, randomUUID(), foreignTable, { targetStatus: "OCCUPIED", expectedVersion: 1 })).rejects.toThrow("current branch");
     expect(occupied.status).toBe("OCCUPIED");
   });
+
+  it("rolls back the table update, audit, outbox, change feed and command record when durable publication fails", async () => {
+    const table = await createTable("Rollback");
+    const service = floor as unknown as { outbox: (...args: unknown[]) => Promise<void> };
+    const originalOutbox = service.outbox;
+    service.outbox = async () => { throw new Error("simulated outbox failure"); };
+    const operationId = randomUUID();
+    try {
+      await expect(floor.changeTableStatus(actor, operationId, table.id, { targetStatus: "OCCUPIED", expectedVersion: table.version })).rejects.toThrow("simulated outbox failure");
+    } finally {
+      service.outbox = originalOutbox;
+    }
+    const state = await pool.query(`SELECT
+      (SELECT status FROM restaurant_tables WHERE id=$1) status,
+      (SELECT version::text FROM restaurant_tables WHERE id=$1) version,
+      (SELECT count(*)::int FROM audit_logs WHERE entity_id=$1 AND action='restaurant_table.status_changed') audit,
+      (SELECT count(*)::int FROM sync_outbox WHERE aggregate_id=$1) outbox,
+      (SELECT count(*)::int FROM sync_changes WHERE entity_id=$1) changes,
+      (SELECT count(*)::int FROM command_operations WHERE operation_id=$2) commands`, [table.id, operationId]);
+    expect(state.rows[0]).toEqual({ status: "AVAILABLE", version: "1", audit: 0, outbox: 0, changes: 0, commands: 0 });
+  });
+
+  it("serializes release against opening an account and never leaves AVAILABLE with an OPEN account", async () => {
+    const table = await createTable("Release/open race");
+    const occupied = await floor.changeTableStatus(actor, randomUUID(), table.id, { targetStatus: "OCCUPIED", expectedVersion: table.version });
+    const outcomes = await Promise.allSettled([
+      floor.changeTableStatus(actor, randomUUID(), table.id, { targetStatus: "AVAILABLE", expectedVersion: occupied.version }),
+      floor.openAccount(actor, randomUUID(), { tableId: table.id, customerId: null, notes: null }),
+    ]);
+    expect(outcomes.some((outcome) => outcome.status === "fulfilled")).toBe(true);
+    const state = await pool.query(`SELECT t.status,(SELECT count(*)::int FROM accounts WHERE table_id=t.id AND status='OPEN') open_accounts
+      FROM restaurant_tables t WHERE t.id=$1`, [table.id]);
+    expect(state.rows[0]).toEqual({ status: "OCCUPIED", open_accounts: 1 });
+  });
 });

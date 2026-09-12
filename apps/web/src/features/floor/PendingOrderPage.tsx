@@ -18,6 +18,20 @@ function errorVariant(error: unknown): "network" | "forbidden" | "server" {
   return "server";
 }
 
+const BLOCKED_AVAILABILITY_MESSAGE =
+  "La mesa no puede marcarse como disponible porque tiene una cuenta abierta o pedidos activos.";
+
+type StatusMessage = { tone: "success" | "error"; text: string };
+
+function statusChangeErrorMessage(cause: unknown): string {
+  if (cause instanceof ApiRequestError) {
+    if (cause.status === 409) return "El estado de la mesa cambió. Revisa la información actualizada.";
+    if (cause.status === 422) return BLOCKED_AVAILABILITY_MESSAGE;
+    if (cause.status === 403) return "No tienes permiso para cambiar el estado de esta mesa.";
+  }
+  return "No se pudo confirmar el cambio. Verifica el estado antes de reintentar.";
+}
+
 export function PendingOrderPage() {
   const { tableId } = useParams<{ tableId: string }>();
   const auth = useAuth();
@@ -25,9 +39,12 @@ export function PendingOrderPage() {
   const { status, snapshot, error, api, reload } = useFloor();
   const catalog = useCatalog();
   const [pendingAccountId, setPendingAccountId] = useState<string | null>(null);
+  const [statusPending, setStatusPending] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<StatusMessage | null>(null);
   const permissions = auth.context?.permissions ?? [];
   const canOpen = hasPermission(permissions, "accounts.open");
-  const canConfirm = hasEveryPermission(permissions, ["accounts.update", "sales.add_items", "kitchen.send"]);
+  const canChangeStatus = hasPermission(permissions, "tables.change_status");
+  const canConfirm = canOpen && hasEveryPermission(permissions, ["accounts.update", "sales.add_items", "kitchen.send"]);
 
   if (!tableId) {
     return <ErrorState variant="not-found" title="Mesa no especificada" />;
@@ -59,7 +76,7 @@ export function PendingOrderPage() {
     return null;
   }
 
-  if (!canOpen) {
+  if (!canOpen && table.status !== "OCCUPIED") {
     return (
       <section className="dj-pending-order">
         <ErrorState variant="forbidden" description="Tu usuario no tiene permiso para abrir cuentas." />
@@ -70,7 +87,7 @@ export function PendingOrderPage() {
     );
   }
 
-  if (!table.active || (table.status !== "AVAILABLE" && table.status !== "RESERVED")) {
+  if (!table.active || (table.status !== "AVAILABLE" && table.status !== "RESERVED" && table.status !== "OCCUPIED")) {
     return (
       <section className="dj-pending-order">
         <ErrorState
@@ -96,6 +113,24 @@ export function PendingOrderPage() {
     return api.confirmConsumption(account.id, { expectedVersion: account.version, items });
   };
 
+  const handleChangeStatus = async (targetStatus: "AVAILABLE" | "OCCUPIED") => {
+    if (statusPending) return;
+    setStatusPending(true);
+    setStatusMessage(null);
+    try {
+      await api.changeTableStatus(table.id, { targetStatus, expectedVersion: table.version });
+      setStatusMessage({
+        tone: "success",
+        text: targetStatus === "OCCUPIED" ? "La mesa quedó marcada como ocupada." : "La mesa quedó marcada como disponible.",
+      });
+    } catch (cause) {
+      setStatusMessage({ tone: "error", text: statusChangeErrorMessage(cause) });
+    } finally {
+      setStatusPending(false);
+      reload();
+    }
+  };
+
   return (
     <section className="dj-pending-order" aria-labelledby="pending-order-title">
       <h1 id="pending-order-title">Pedido — {table.name}</h1>
@@ -104,6 +139,31 @@ export function PendingOrderPage() {
       <Button variant="secondary" onClick={() => navigate("/floor")}>
         Volver al salón
       </Button>
+
+      {canChangeStatus && table.status !== "RESERVED" ? (
+        <div className="dj-pending-order__status-actions">
+          {table.status === "AVAILABLE" ? (
+            <Button variant="secondary" onClick={() => handleChangeStatus("OCCUPIED")} disabled={statusPending}>
+              Marcar como ocupada
+            </Button>
+          ) : table.canMarkAvailable ? (
+            <Button variant="secondary" onClick={() => handleChangeStatus("AVAILABLE")} disabled={statusPending}>
+              Marcar como disponible
+            </Button>
+          ) : (
+            <p className="dj-pending-order__status-blocked">{BLOCKED_AVAILABILITY_MESSAGE}</p>
+          )}
+        </div>
+      ) : null}
+
+      {statusMessage ? (
+        <p
+          role={statusMessage.tone === "error" ? "alert" : "status"}
+          className={`dj-pending-order__status-message dj-pending-order__status-message--${statusMessage.tone}`}
+        >
+          {statusMessage.text}
+        </p>
+      ) : null}
 
       {!canConfirm ? (
         <p className="dj-catalog-form__hint">No tienes permisos para confirmar el pedido y enviarlo a cocina.</p>

@@ -11,7 +11,7 @@ describeIntegration("billing payment transaction", () => {
   let billing: BillingService;
   const companyId = randomUUID(); const branchId = randomUUID(); const userId = randomUUID();
   const actor = { userId, branchId };
-  let cashRegisterId = ""; let cashMethodId = ""; let accountId = ""; let foreignBranchId = ""; let foreignRegisterId = "";
+  let cashRegisterId = ""; let cashMethodId = ""; let accountId = ""; let tableId = ""; let foreignBranchId = ""; let foreignRegisterId = "";
 
   beforeAll(async () => {
     pool = new Pool({ connectionString: databaseUrl }); billing = new BillingService(pool);
@@ -19,10 +19,13 @@ describeIntegration("billing payment transaction", () => {
     await pool.query("INSERT INTO branches(id,company_id,name,code) VALUES($1,$2,'Billing',$3)", [branchId, companyId, `B-${companyId}`]);
     await pool.query("INSERT INTO users(id,company_id,username,password_hash,display_name) VALUES($1,$2,$3,crypt('x',gen_salt('bf',4)),'Billing')", [userId, companyId, `billing-${companyId}`]);
     await pool.query("INSERT INTO user_branch_access(user_id,branch_id) VALUES($1,$2)", [userId, branchId]);
-    cashRegisterId = randomUUID(); cashMethodId = randomUUID(); accountId = randomUUID();
+    cashRegisterId = randomUUID(); cashMethodId = randomUUID(); accountId = randomUUID(); tableId = randomUUID();
     await pool.query("INSERT INTO cash_registers(id,branch_id,name) VALUES($1,$2,'Principal')", [cashRegisterId, branchId]);
     await pool.query("INSERT INTO payment_methods(id,branch_id,name,type) VALUES($1,$2,'Efectivo','CASH')", [cashMethodId, branchId]);
-    await pool.query("INSERT INTO accounts(id,branch_id,opened_by_user_id,subtotal,total) VALUES($1,$2,$3,20,20)", [accountId, branchId, userId]);
+    const areaId = randomUUID();
+    await pool.query("INSERT INTO dining_areas(id,branch_id,name) VALUES($1,$2,'Billing')", [areaId, branchId]);
+    await pool.query("INSERT INTO restaurant_tables(id,dining_area_id,name,capacity,status) VALUES($1,$2,'Billing',4,'OCCUPIED')", [tableId, areaId]);
+    await pool.query("INSERT INTO accounts(id,branch_id,table_id,opened_by_user_id,subtotal,total) VALUES($1,$2,$3,$4,20,20)", [accountId, branchId, tableId, userId]);
     foreignBranchId=randomUUID(); foreignRegisterId=randomUUID();
     await pool.query("INSERT INTO branches(id,company_id,name,code) VALUES($1,$2,'Foreign',$3)",[foreignBranchId,companyId,`X-${companyId}`]);
     await pool.query("INSERT INTO cash_registers(id,branch_id,name) VALUES($1,$2,'Foreign register')",[foreignRegisterId,foreignBranchId]);
@@ -42,8 +45,10 @@ describeIntegration("billing payment transaction", () => {
       (SELECT count(*)::int FROM payments WHERE account_id=$1) payment_count,
       (SELECT amount FROM cash_movements WHERE payment_id=$2) cash_sale,
       (SELECT status FROM print_jobs WHERE reference_id=$2) receipt_status,
-      (SELECT count(*)::int FROM sync_outbox WHERE operation_id=$3) outbox_count`, [accountId, result.id, operationId]);
-    expect(consistency.rows[0]).toEqual({ account_status: "PAID", payment_count: 1, cash_sale: "20.00", receipt_status: "FAILED", outbox_count: 1 });
+      (SELECT count(*)::int FROM sync_outbox WHERE operation_id=$3) outbox_count,
+      (SELECT status FROM restaurant_tables WHERE id=$4) table_status,
+      (SELECT version::text FROM restaurant_tables WHERE id=$4) table_version`, [accountId, result.id, operationId, tableId]);
+    expect(consistency.rows[0]).toEqual({ account_status: "PAID", payment_count: 1, cash_sale: "20.00", receipt_status: "FAILED", outbox_count: 1, table_status: "AVAILABLE", table_version: "2" });
   });
   it("lists only current-branch registers, open sessions and active payment methods", async () => {
     const session=(await billing.openCashSessionForRegister(actor,cashRegisterId)) ?? await billing.openCashSession(actor,randomUUID(),{cashRegisterId,openingAmount:"0",notes:null});

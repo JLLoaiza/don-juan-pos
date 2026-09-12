@@ -7,3 +7,21 @@
 .dj-pending-order__meta {
   color: var(--dj-color-text-muted);
 }
+
+.dj-pending-order__status-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--dj-space-3);
+}
+
+.dj-pending-order__status-blocked {
+  color: var(--dj-color-text-muted);
+}
+
+.dj-pending-order__status-message--error {
+  color: var(--dj-color-danger, #b91c1c);
+}
+
+.dj-pending-order__status-message--success {
+  color: var(--dj-color-success, #15803d);
+}

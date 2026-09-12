@@ -45,4 +45,4 @@ Permitir que, al abrir una mesa desde `/floor`, el usuario pueda marcarla manual
 
 ## Estado resumido
 
-Expediente `COMPLETE`: definición de producto versión `0.2` aprobada y plan técnico trazable `TECHNICALLY_PLANNED`. Está listo para una futura orquestación de desarrollo; la feature no está implementada.
+Expediente `COMPLETE`: definición versión `0.2` aprobada, plan técnico trazable y backend/frontend implementados. La verificación del 2026-09-11 pasó typechecks y suites sin PostgreSQL; las integraciones que requieren `DATABASE_URL_TEST` quedaron pendientes de CI o de un entorno con base de datos.
